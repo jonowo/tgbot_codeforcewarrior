@@ -70,6 +70,8 @@ example usage:
     /select tags=data structures,dp|rating=1800-2000
     /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000
 
+if you are willing to contribute, please submit merge request for adding more function in:
+    https://github.com/eepnt/tgbot_codeforcewarrior
             """
         elif command_match("/tags", splits[0]):
             response = list(available_tags)
