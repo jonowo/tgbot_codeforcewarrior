@@ -1,4 +1,6 @@
-import requests, json, flask, random, functools
+import requests, json, flask, random, functools, logging, google.cloud.logging
+
+google.cloud.logging.Client().setup_logging()
 
 try:
   import googleclouddebugger
@@ -14,10 +16,10 @@ available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set
 app = flask.Flask(__name__)
 
 def select(tags, rating):
-    print(json.dumps({
+    logging.info({
         "tags": list(tags),
         "rating": rating,
-    }))
+    })
     filtered_problems = problems
     if len(tags) > 0:
         filtered_problems = filter(
@@ -50,7 +52,7 @@ def command_match(cmd, input):
 def hello():
     try:
         data = flask.request.get_json()
-        print(json.dumps(data))
+        logging.info(data)
         text = data["message"]["text"]
         splits = text.split(' ', 1)
         problem = None
@@ -106,14 +108,14 @@ if you are willing to contribute, please submit merge request for adding more fu
             "chat_id": data["message"]["chat"]["id"],
             'text': response
         }
-        print(json.dumps({
+        logging.info({
             "selected_problem": problem,
             "response": response,
-        }))
+        })
         return flask.jsonify(response)
     except Exception as e:
         import sys, traceback
-        print(''.join(traceback.format_exception(type(e), e, e.__traceback__)), file=sys.stderr)
+        logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
         return ""
 
 if __name__ == '__main__':
