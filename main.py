@@ -1,4 +1,4 @@
-import requests, json, flask, random, functools, logging, google.cloud.logging
+import requests, flask, random, functools, logging, google.cloud.logging
 
 google.cloud.logging.Client().setup_logging()
 
@@ -12,6 +12,8 @@ except ImportError:
 
 problems = requests.get("https://codeforces.com/api/problemset.problems").json()["result"]["problems"]
 available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set())
+
+newjoin_member = set()
 
 app = flask.Flask(__name__)
 
@@ -38,26 +40,31 @@ def select(tags, rating):
         return None
 
 def form_response(problem_entry):
-    contest_id = problem_entry["contestId"]
-    index = problem_entry["index"]
-    return "{}\n".format(problem_entry["name"]) + \
-    "tags: {}\n".format(problem_entry["tags"]) + \
-    "rating: {}\n".format(problem_entry["rating"] if "rating" in problem_entry.keys() else "not rated") + \
-    "https://codeforces.com/problemset/problem/{}/{}".format(contest_id, index)
+    contest_id = 
+    index = 
+    return 
 
-def command_match(cmd, input):
-    return input == cmd or input == cmd + "@codeforcewarrior_bot"
+class tgmsg_digester():
+    def __init__(self, data):
+        self.data = data
+        self.response = None
+        if "message" in data:
+            message = data["message"]
+            if "text" in message:
+                text = message["text"]
+                splits = text.split(' ', 1)
+                command = splits[0].replace("@codeforcewarrior_bot", "")
+                if len(splits) == 1:
+                    splits.append("")
+                self.command(command, splits[1])
+            elif "new_chat_member" in message:
+                new_chat_member = message["new_chat_member"]
+                if new_chat_member["is_bot"] == False:
+                    self.new_member_join(new_chat_member)
 
-@app.route('/', methods=["POST"])
-def hello():
-    try:
-        data = flask.request.get_json()
-        logging.info(data)
-        text = data["message"]["text"]
-        splits = text.split(' ', 1)
-        problem = None
-        if command_match("/help", splits[0]):
-            response = """
+    def command(self, cmd, content):
+        if cmd == "/help":
+            self.response = """
 command:
     /help - thats why you see me talking now
     /select - random question from codeforces
@@ -75,9 +82,9 @@ example usage:
 if you are willing to contribute, please submit merge request for adding more function in:
     https://github.com/eepnt/tgbot_codeforcewarrior
             """
-        elif command_match("/tags", splits[0]):
-            response = list(available_tags)
-        elif command_match("/select", splits[0]):
+        elif cmd == "/tags":
+            self.response = list(available_tags)
+        elif cmd == "/select":
             tags = set()
             rating = None
             if len(splits) > 1:
@@ -98,23 +105,39 @@ if you are willing to contribute, please submit merge request for adding more fu
                     rating = micro_splits
             problem = select(tags, rating)
             if problem is None:
-                response = "no problem match search criteria {} {}".format(tags, rating)
+                self.response = "no problem match search criteria {} {}".format(tags, rating)
             else:
-                response = form_response(problem)
+                self.response = "{}\n".format(problem["name"]) + \
+                    "tags: {}\n".format(problem["tags"]) + \
+                    "rating: {}\n".format(problem["rating"] if "rating" in problem.keys() else "not rated") + \
+                    "https://codeforces.com/problemset/problem/{}/{}".format(problem["contestId"], problem["index"])
+
+    def new_member_join(self, user):
+        self.response = "welcome {}".format(user["first_name"])
+
+    def response_output(self):
+        if self.response is not None:
+            return {
+                "method": "sendMessage",
+                "chat_id": self.data["message"]["chat"]["id"],
+                'text': self.response
+            }
+        else:
+            return None
+
+@app.route('/', methods=["POST"])
+def hello():
+    try:
+        data = flask.request.get_json()
+        logging.info(data)
+        response = tgmsg_digester(data).response_output()
+        logging.info(response)
+        if response != None:
+            return flask.jsonify(response)
         else:
             return ""
-        response = {
-            "method": "sendMessage",
-            "chat_id": data["message"]["chat"]["id"],
-            'text': response
-        }
-        logging.info({
-            "selected_problem": problem,
-            "response": response,
-        })
-        return flask.jsonify(response)
     except Exception as e:
-        import sys, traceback
+        import traceback
         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
         return ""
 
