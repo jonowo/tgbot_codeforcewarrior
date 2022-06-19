@@ -1,19 +1,49 @@
 import requests, flask, random, functools, logging, google.cloud.logging
+import signal, threading
+
 
 google.cloud.logging.Client().setup_logging()
 
 try:
-  import googleclouddebugger
-  googleclouddebugger.enable(
+  import googlecloudinfoger
+  googlecloudinfoger.enable(
     breakpoint_enable_canary=False
   )
 except ImportError:
   pass
 
+token = None
+with open(".credentials", "r") as f:
+    token = f.read()
+
 problems = requests.get("https://codeforces.com/api/problemset.problems").json()["result"]["problems"]
 available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set())
 
+chat_id = "-1001669733846"
 newjoin_member = set()
+
+def clear_unauthenticated_newjoin_member():
+    logging.info({
+        "action": "terminating",
+        "newjoin_member": list(newjoin_member)
+    })
+    for user_id in newjoin_member:
+        # https://core.telegram.org/bots/api#banchatmember
+        message = {
+            "chat_id": chat_id,
+            "user_id": user_id,
+        }
+        method = "banChatMember"
+        url = "https://api.telegram.org/bot{}/{}".format(token, method)
+        response = requests.get(url, params=message)
+        logging.info({
+            "event": "on_shutdown",
+            "response_code": response.status_code,
+            "response_text": response.text,
+        })        
+
+quit_event = threading.Event()
+signal.signal(signal.SIGTERM, lambda *_args: clear_unauthenticated_newjoin_member())
 
 app = flask.Flask(__name__)
 
@@ -39,11 +69,6 @@ def select(tags, rating):
     else:
         return None
 
-def form_response(problem_entry):
-    contest_id = 
-    index = 
-    return 
-
 class tgmsg_digester():
     def __init__(self, data):
         self.data = data
@@ -56,41 +81,39 @@ class tgmsg_digester():
                 command = splits[0].replace("@codeforcewarrior_bot", "")
                 if len(splits) == 1:
                     splits.append("")
-                self.command(command, splits[1])
+                user = data["message"]["from"]
+                if user["is_bot"]:
+                    user = None
+                self.command(command, splits[1], user=user)
             elif "new_chat_member" in message:
                 new_chat_member = message["new_chat_member"]
                 if new_chat_member["is_bot"] == False:
                     self.new_member_join(new_chat_member)
 
-    def command(self, cmd, content):
+    def command(self, cmd, content, user=None):
         if cmd == "/help":
-            self.response = """
-command:
-    /help - thats why you see me talking now
-    /select - random question from codeforces
-    /tags - show available tags
-
-arguments:
-    tags=data structures,dp - csv form of tags
-    rating=1800-2000 - rating range
-
-example usage:
-    /select rating=1800-2000
-    /select tags=data structures,dp|rating=1800-2000
-    /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000
-
-if you are willing to contribute, please submit merge request for adding more function in:
-    https://github.com/eepnt/tgbot_codeforcewarrior
-            """
+            self.response = "command:" + \
+                "    /help - thats why you see me talking now" + \
+                "    /select - random question from codeforces" + \
+                "    /tags - show available tags" + \
+                "" + \
+                "arguments:" + \
+                "    tags=data structures,dp - csv form of tags" + \
+                "    rating=1800-2000 - rating range" + \
+                "" + \
+                "example usage:" + \
+                "    /select rating=1800-2000" + \
+                "    /select tags=data structures,dp|rating=1800-2000" + \
+                "    /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000" + \
+                "" + \
+                "if you are willing to contribute, please submit merge request for adding more function in:" + \
+                "    https://github.com/eepnt/tgbot_codeforcewarrior"
         elif cmd == "/tags":
             self.response = list(available_tags)
         elif cmd == "/select":
             tags = set()
             rating = None
-            if len(splits) > 1:
-                splits = splits[1].split('|')
-            else:
-                splits = []
+            splits = content.split('|')
             while len(splits) > 0:
                 entry = splits.pop(0)
                 mini_splits = entry.split('=')
@@ -111,9 +134,42 @@ if you are willing to contribute, please submit merge request for adding more fu
                     "tags: {}\n".format(problem["tags"]) + \
                     "rating: {}\n".format(problem["rating"] if "rating" in problem.keys() else "not rated") + \
                     "https://codeforces.com/problemset/problem/{}/{}".format(problem["contestId"], problem["index"])
+        elif cmd == "/sign_on":
+            if user is None:
+                logging.error("unexpected response")
+                return
+            logging.info({
+                "newjoin_member": list(newjoin_member),
+            })
+            try:
+                tguser_id = user["id"]
+                if tguser_id not in newjoin_member:
+                    self.response = "fail to sign on - this tg user is not on non-signon list"
+                    return
+            except KeyError:
+                logging.error("unexpected error - msg doesnt carry tg userid")
+            else:
+                if content == "":
+                    self.response = "please enter codeforce username"
+                else:
+                    response = requests.get("https://codeforces.com/api/user.status?count=1&handle={}".format(content))
+                    logging.info({
+                        "response_code": response.status_code,
+                        "response_text": response.text,
+                    })
+                    if response.json()["status"] == "OK":
+                        newjoin_member.remove(tguser_id)
+                        self.response = "{} sign on as {}".format(user["username"], content)
+                    else:
+                        self.response = "codeforce user {} not found".format(content)
 
     def new_member_join(self, user):
-        self.response = "welcome {}".format(user["first_name"])
+        if not user["is_bot"]:
+            logging.info({
+                "newjoin_member": newjoin_member,
+            })
+            newjoin_member.add(user["id"])
+            self.response = "welcome {}, please sign on yourself as codeforce user by typing `/sign_on {{cf username}}`".format(user["first_name"])
 
     def response_output(self):
         if self.response is not None:
@@ -142,5 +198,5 @@ def hello():
         return ""
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8080, debug=True)
+    app.run(host='127.0.0.1', port=8080, info=True)
 
