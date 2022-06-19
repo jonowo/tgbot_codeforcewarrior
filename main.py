@@ -166,10 +166,13 @@ class tgmsg_digester():
     def new_member_join(self, user):
         if not user["is_bot"]:
             logging.info({
-                "newjoin_member": newjoin_member,
+                "newjoin_member": list(newjoin_member),
             })
             newjoin_member.add(user["id"])
-            self.response = "welcome {}, please sign on yourself as codeforce user by typing `/sign_on {{cf username}}`".format(user["first_name"])
+            self.response = "Welcome {} \n".format(user["first_name"]) + \
+                "進入本群需持有codeforce account \n" + \
+                "請儘快申請帳號: https://codeforces.com/register \n" + \
+                "並於此群輸入 `/sign_on {{codeforce handle (username)}}`"
 
     def response_output(self):
         if self.response is not None:
