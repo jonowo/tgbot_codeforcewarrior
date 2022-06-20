@@ -4,6 +4,8 @@ from google.cloud import tasks_v2
 from google.protobuf import timestamp_pb2
 from google.cloud import firestore
 
+from codeforces import CodeforcesAPI
+
 google.cloud.logging.Client().setup_logging()
 
 try:
@@ -26,6 +28,7 @@ problems = requests.get("https://codeforces.com/api/problemset.problems").json()
 available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set())
 
 app = flask.Flask(__name__)
+cf_client = CodeforcesAPI()
 
 def select(tags, rating):
     logging.info({
@@ -35,12 +38,12 @@ def select(tags, rating):
     filtered_problems = problems
     if len(tags) > 0:
         filtered_problems = filter(
-            lambda problem: tags.issubset(set(problem["tags"])), 
+            lambda problem: tags.issubset(set(problem["tags"])),
             filtered_problems
         )
     if rating is not None:
         filtered_problems = filter(
-            lambda problem: "rating" in problem.keys() and int(rating[0]) <= problem["rating"] and problem["rating"] <= int(rating[1]), 
+            lambda problem: "rating" in problem.keys() and int(rating[0]) <= problem["rating"] and problem["rating"] <= int(rating[1]),
             filtered_problems
         )
     filtered_problems = list(filtered_problems)
@@ -53,6 +56,8 @@ class tgmsg_digester():
     def __init__(self, data):
         self.data = data
         self.response = None
+        self.sticker_file_id = None
+
         if "message" in data:
             message = data["message"]
             if "text" in message:
@@ -88,6 +93,8 @@ class tgmsg_digester():
                 " \n" + \
                 "if you are willing to contribute, please submit merge request for adding more function in: \n" + \
                 "    https://github.com/eepnt/tgbot_codeforcewarrior"
+        elif cmd in ("/group_admin", "/group_girlgod"):
+            self.sticker_file_id = "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
         elif cmd == "/tags":
             self.response = list(available_tags)
         elif cmd == "/select":
@@ -118,7 +125,7 @@ class tgmsg_digester():
             if user is None:
                 logging.error("unexpected response")
                 return
-                
+
             if content == "":
                 self.response = "please enter codeforce username"
             else:
@@ -142,6 +149,9 @@ class tgmsg_digester():
                     self.response = "{} successfully signed on as codeforce user {}".format(user["first_name"], response["result"][0]["handle"])
                 else:
                     self.response = "codeforce user \"{}\" cannot be found or invalid".format(content)
+        elif cmd == "/contests":
+            contests = cf_client.get_contests()
+            self.response = "\n\n".join([str(c) for c in contests])
 
     def new_member_join(self, user):
         if not user["is_bot"]:
@@ -172,7 +182,15 @@ class tgmsg_digester():
             return {
                 "method": "sendMessage",
                 "chat_id": self.data["message"]["chat"]["id"],
-                'text': self.response
+                'text': self.response,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+        elif self.sticker_file_id:
+            return {
+                "method": "sendSticker",
+                "chat_id": self.data["message"]["chat"]["id"],
+                "sticker": self.sticker_file_id
             }
         else:
             return None
