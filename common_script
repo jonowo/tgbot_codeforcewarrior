@@ -1,1 +1,5 @@
-gcloud app deploy
+deluser:
+  - gcloud functions deploy check_user_signon --entry-point check_user_signon --trigger-http --region asia-northeast1 --memory 128MB --runtime python39
+
+tgbot:
+  - gcloud app deploy

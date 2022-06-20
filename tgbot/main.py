@@ -1,6 +1,8 @@
-import requests, flask, random, functools, logging, google.cloud.logging
-import signal, threading
-
+import requests, json, flask, random, functools, logging, datetime
+import google.cloud.logging
+from google.cloud import tasks_v2
+from google.protobuf import timestamp_pb2
+from google.cloud import firestore
 
 google.cloud.logging.Client().setup_logging()
 
@@ -12,38 +14,16 @@ try:
 except ImportError:
   pass
 
-token = None
-with open(".credentials", "r") as f:
-    token = f.read()
+# load firestore
+db = firestore.Client(project='tgbot-340618')
 
+# load cloud task config
+task_client = tasks_v2.CloudTasksClient()
+task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-userdeletion")
+
+# load question set
 problems = requests.get("https://codeforces.com/api/problemset.problems").json()["result"]["problems"]
 available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set())
-
-chat_id = "-1001669733846"
-newjoin_member = set()
-
-def clear_unauthenticated_newjoin_member():
-    logging.info({
-        "action": "terminating",
-        "newjoin_member": list(newjoin_member)
-    })
-    for user_id in newjoin_member:
-        # https://core.telegram.org/bots/api#banchatmember
-        message = {
-            "chat_id": chat_id,
-            "user_id": user_id,
-        }
-        method = "banChatMember"
-        url = "https://api.telegram.org/bot{}/{}".format(token, method)
-        response = requests.get(url, params=message)
-        logging.info({
-            "event": "on_shutdown",
-            "response_code": response.status_code,
-            "response_text": response.text,
-        })        
-
-quit_event = threading.Event()
-signal.signal(signal.SIGTERM, lambda *_args: clear_unauthenticated_newjoin_member())
 
 app = flask.Flask(__name__)
 
@@ -92,21 +72,21 @@ class tgmsg_digester():
 
     def command(self, cmd, content, user=None):
         if cmd == "/help":
-            self.response = "command:" + \
-                "    /help - thats why you see me talking now" + \
-                "    /select - random question from codeforces" + \
-                "    /tags - show available tags" + \
-                "" + \
-                "arguments:" + \
-                "    tags=data structures,dp - csv form of tags" + \
-                "    rating=1800-2000 - rating range" + \
-                "" + \
-                "example usage:" + \
-                "    /select rating=1800-2000" + \
-                "    /select tags=data structures,dp|rating=1800-2000" + \
-                "    /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000" + \
-                "" + \
-                "if you are willing to contribute, please submit merge request for adding more function in:" + \
+            self.response = "command: \n" + \
+                "    /help - thats why you see me talking now \n" + \
+                "    /select - random question from codeforces \n" + \
+                "    /tags - show available tags \n" + \
+                " \n" + \
+                "arguments: \n" + \
+                "    tags=data structures,dp - csv form of tags \n" + \
+                "    rating=1800-2000 - rating range \n" + \
+                " \n" + \
+                "example usage: \n" + \
+                "    /select rating=1800-2000 \n" + \
+                "    /select tags=data structures,dp|rating=1800-2000 \n" + \
+                "    /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000 \n" + \
+                " \n" + \
+                "if you are willing to contribute, please submit merge request for adding more function in: \n" + \
                 "    https://github.com/eepnt/tgbot_codeforcewarrior"
         elif cmd == "/tags":
             self.response = list(available_tags)
@@ -138,37 +118,50 @@ class tgmsg_digester():
             if user is None:
                 logging.error("unexpected response")
                 return
-            logging.info({
-                "newjoin_member": list(newjoin_member),
-            })
-            try:
-                tguser_id = user["id"]
-                if tguser_id not in newjoin_member:
-                    self.response = "fail to sign on - this tg user is not on non-signon list"
-                    return
-            except KeyError:
-                logging.error("unexpected error - msg doesnt carry tg userid")
+                
+            if content == "":
+                self.response = "please enter codeforce username"
             else:
-                if content == "":
-                    self.response = "please enter codeforce username"
-                else:
-                    response = requests.get("https://codeforces.com/api/user.status?count=1&handle={}".format(content))
-                    logging.info({
-                        "response_code": response.status_code,
-                        "response_text": response.text,
+                response = requests.get("https://codeforces.com/api/user.info?handles={}".format(content))
+                logging.info({
+                    "response_code": response.status_code,
+                    "response_text": response.text,
+                })
+                response = response.json()
+                if response["status"] == "OK":
+                    """
+                    if response["result"][0]["lastOnlineTimeSeconds"] < int(time.time()) - 300:
+                        self.response = "i suspect this is not your account? please get online before signon"
+                        return
+                    """
+                    user_doc = db.collection('cfbot_user').document(str(user["id"]))
+                    user_doc.set({
+                        "tg_user": user,
+                        "cf_user": response,
                     })
-                    if response.json()["status"] == "OK":
-                        newjoin_member.remove(tguser_id)
-                        self.response = "{} sign on as {}".format(user["username"], content)
-                    else:
-                        self.response = "codeforce user {} not found".format(content)
+                    self.response = "{} successfully signed on as codeforce user {}".format(user["first_name"], response["result"][0]["handle"])
+                else:
+                    self.response = "codeforce user \"{}\" cannot be found or invalid".format(content)
 
     def new_member_join(self, user):
         if not user["is_bot"]:
-            logging.info({
-                "newjoin_member": list(newjoin_member),
+            timestamp = timestamp_pb2.Timestamp()
+            timestamp.FromDatetime(
+                datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=300)
+            )
+            task_client.create_task(parent=task_parent, task={
+                'http_request': {
+                    "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/check_user_signon",
+                    # 'http_method': tasks_v2.HttpMethod.POST,
+                    'headers': {
+                        "Content-type": "application/json"
+                    },
+                    'body': json.dumps({
+                        'tg_user': user['id'],
+                    }).encode('utf-8'),
+                },
+                'schedule_time': timestamp,
             })
-            newjoin_member.add(user["id"])
             self.response = "Welcome {} \n".format(user["first_name"]) + \
                 "進入本群需持有codeforce account \n" + \
                 "請儘快申請帳號: https://codeforces.com/register \n" + \
