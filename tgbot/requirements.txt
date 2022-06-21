@@ -5,3 +5,4 @@ google-cloud-logging
 google-cloud-tasks==2.7.1
 google-cloud-firestore
 pydantic
+cachetools

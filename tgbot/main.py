@@ -1,4 +1,5 @@
-import requests, json, flask, random, functools, logging, datetime
+import requests, json, flask, random, logging, datetime
+
 import google.cloud.logging
 from google.cloud import tasks_v2
 from google.protobuf import timestamp_pb2
@@ -23,31 +24,31 @@ db = firestore.Client(project='tgbot-340618')
 task_client = tasks_v2.CloudTasksClient()
 task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-userdeletion")
 
-# load question set
-problems = requests.get("https://codeforces.com/api/problemset.problems").json()["result"]["problems"]
-available_tags = functools.reduce(lambda a, b: a | set(b["tags"]), problems, set())
-
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
+cf_client.get_available_tags()  # Precompute
+
 
 def select(tags, rating):
     logging.info({
         "tags": list(tags),
         "rating": rating,
     })
-    filtered_problems = problems
-    if len(tags) > 0:
+
+    filtered_problems = cf_client.get_problems()
+    if tags:
         filtered_problems = filter(
-            lambda problem: tags.issubset(set(problem["tags"])),
+            lambda problem: tags.issubset(set(problem.tags)),
             filtered_problems
         )
-    if rating is not None:
+    if rating:
         filtered_problems = filter(
-            lambda problem: "rating" in problem.keys() and int(rating[0]) <= problem["rating"] and problem["rating"] <= int(rating[1]),
+            lambda problem: problem.rating and rating[0] <= problem.rating <= rating[1],
             filtered_problems
         )
+
     filtered_problems = list(filtered_problems)
-    if len(filtered_problems) > 0:
+    if filtered_problems:
         return random.choice(filtered_problems)
     else:
         return None
@@ -56,6 +57,7 @@ class tgmsg_digester():
     def __init__(self, data):
         self.data = data
         self.response = None
+        self.disable_web_page_preview = False
         self.sticker_file_id = None
 
         if "message" in data:
@@ -96,31 +98,32 @@ class tgmsg_digester():
         elif cmd in ("/group_admin", "/group_girlgod"):
             self.sticker_file_id = "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
         elif cmd == "/tags":
-            self.response = list(available_tags)
+            self.response = ", ".join(cf_client.get_available_tags())
         elif cmd == "/select":
             tags = set()
             rating = None
-            splits = content.split('|')
-            while len(splits) > 0:
-                entry = splits.pop(0)
-                mini_splits = entry.split('=')
-                if mini_splits[0] == "tags":
-                    micro_splits = mini_splits[1].split(',')
-                    while len(micro_splits) > 0:
-                        micro_entry = micro_splits.pop()
-                        if micro_entry != "":
-                            tags.add(micro_entry)
-                elif mini_splits[0] == "rating":
-                    micro_splits = mini_splits[1].split('-')
-                    rating = micro_splits
-            problem = select(tags, rating)
-            if problem is None:
-                self.response = "no problem match search criteria {} {}".format(tags, rating)
+            try:
+                splits = [s.strip() for s in content.split('|') if s and not s.isspace()]
+                for entry in splits:
+                    mini_splits = entry.split('=', maxsplit=1)
+                    assert len(mini_splits) == 2
+                    if mini_splits[0] == "tags":
+                        micro_splits = mini_splits[1].split(',')
+                        micro_splits = [s.strip() for s in micro_splits if s and not s.isspace()]
+                        tags |= set(micro_splits)
+                    elif mini_splits[0] == "rating":
+                        rating = [int(r) for r in mini_splits[1].split('-', maxsplit=1)]
+                        if len(rating) == 1:
+                            rating *= 2  # [r] -> [r, r]
+                    else:
+                        raise ValueError
+            except (ValueError, AssertionError):
+                self.response = "Your query is invalid"
             else:
-                self.response = "{}\n".format(problem["name"]) + \
-                    "tags: {}\n".format(problem["tags"]) + \
-                    "rating: {}\n".format(problem["rating"] if "rating" in problem.keys() else "not rated") + \
-                    "https://codeforces.com/problemset/problem/{}/{}".format(problem["contestId"], problem["index"])
+                if problem := select(tags, rating):
+                    self.response = str(problem)
+                else:
+                    self.response = "no problem match search criteria {} {}".format(tags, rating)
         elif cmd == "/sign_on":
             if user is None:
                 logging.error("unexpected response")
@@ -152,6 +155,7 @@ class tgmsg_digester():
         elif cmd == "/contests":
             contests = cf_client.get_contests()
             self.response = "\n\n".join([str(c) for c in contests])
+            self.disable_web_page_preview = True
 
     def new_member_join(self, user):
         if not user["is_bot"]:
@@ -184,7 +188,7 @@ class tgmsg_digester():
                 "chat_id": self.data["message"]["chat"]["id"],
                 'text': self.response,
                 "parse_mode": "HTML",
-                "disable_web_page_preview": True
+                "disable_web_page_preview": str(self.disable_web_page_preview).lower()
             }
         elif self.sticker_file_id:
             return {

@@ -1,6 +1,9 @@
-import requests
+import functools
 
-from .models import Contest, ContestPhase
+import requests
+from cachetools import TTLCache, cached
+
+from .models import Contest, ContestPhase, Problem
 
 
 class CodeforcesError(Exception):
@@ -23,7 +26,18 @@ class CodeforcesAPI:
             raise CodeforcesError(data["comment"])
         return data["result"]
 
-    def get_contests(self):
+    @cached(cache=TTLCache(maxsize=1, ttl=10 * 60))
+    def get_problems(self) -> list[Problem]:
+        data = self._request("problemset.problems")["problems"]
+        return [Problem(**p) for p in data]
+
+    @cached(cache={})  # Store forever
+    def get_available_tags(self) -> set[str]:
+        problems = self.get_problems()
+        return functools.reduce(lambda t, p: t | set(p.tags), problems, set())
+
+    @cached(cache=TTLCache(maxsize=1, ttl=5 * 60))
+    def get_contests(self) -> list[Contest]:
         data = self._request("contest.list", params={"gym": "false"})
         contests = [Contest(**c) for c in data]
         contests = [c for c in contests if c.phase in (ContestPhase.BEFORE, ContestPhase.CODING)]
