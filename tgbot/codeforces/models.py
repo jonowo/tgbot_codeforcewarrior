@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
@@ -7,6 +8,28 @@ from pydantic import BaseModel
 from .utils import duration
 
 HKT = ZoneInfo("Asia/Hong_Kong")
+
+
+class Problem(BaseModel):
+    contestId: int
+    index: str
+    name: str
+    rating: Optional[int] = None
+    tags: list[str]
+
+    @property
+    def id(self) -> str:
+        return f"{self.contestId}{self.index}"
+
+    @property
+    def url(self) -> str:
+        return f"https://codeforces.com/problemset/problem/{self.contestId}/{self.index}"
+
+    def __str__(self):
+        text = f"<a href='{self.url}'>{self.id} - {self.name}</a>\n"
+        text += f"Tags: {', '.join(self.tags)}\n"
+        text += f"Rating: {self.rating}"
+        return text
 
 
 class ContestScoring(str, Enum):
@@ -32,22 +55,28 @@ class Contest(BaseModel):
     startTimeSeconds: int
 
     @property
-    def start_time(self):
+    def start_time(self) -> datetime:
         dt = datetime.utcfromtimestamp(self.startTimeSeconds)
         return dt.replace(tzinfo=timezone.utc).astimezone(HKT)
 
     @property
-    def end_time(self):
+    def end_time(self) -> datetime:
         return self.start_time + timedelta(seconds=self.durationSeconds)
+
+    @property
+    def url(self) -> str:
+        return f"https://codeforces.com/contests/{self.id}"
 
     def __str__(self):
         text = self.start_time.strftime("%b {} (%a) %H:%M").format(
             self.start_time.day)
         text += self.end_time.strftime(" - %H:%M\n")
+
         now = datetime.now(HKT)
         if now < self.start_time:
             text += f"Starts in {duration(self.start_time - now)}\n"
         else:
             text += f"Ends in {duration(self.end_time - now)}\n"
-        text += f"<a href='https://codeforces.com/contests/{self.id}'>{self.name}</a>"
+
+        text += f"<a href='{self.url}'>{self.name}</a>"
         return text
