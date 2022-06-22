@@ -10,6 +10,14 @@ from .utils import duration
 HKT = ZoneInfo("Asia/Hong_Kong")
 
 
+class User(BaseModel):
+    handle: str
+    rating: Optional[int] = None
+    rank: Optional[str] = None
+    maxRating: Optional[int] = None
+    maxRank: Optional[str] = None
+
+
 class Problem(BaseModel):
     contestId: int
     index: str

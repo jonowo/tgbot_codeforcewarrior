@@ -3,7 +3,7 @@ import functools
 import requests
 from cachetools import TTLCache, cached
 
-from .models import Contest, ContestPhase, Problem
+from .models import Contest, ContestPhase, Problem, User
 
 
 class CodeforcesError(Exception):
@@ -17,7 +17,11 @@ class CodeforcesAPI:
 
     def _request(self, endpoint, *args, **kwargs):
         resp = self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
+
+        if resp.status_code == 404:
+            raise CodeforcesError("Not found")
         resp.raise_for_status()
+
         if "Codeforces is temporarily unavailable." in resp.text:
             raise CodeforcesError("Codeforces is temporarily unavailable.")
 
@@ -25,6 +29,11 @@ class CodeforcesAPI:
         if data["status"] == "FAILED":
             raise CodeforcesError(data["comment"])
         return data["result"]
+
+    @cached(cache=TTLCache(maxsize=1024, ttl=60))
+    def get_user(self, handle) -> User:
+        data = self._request("user.info", params={"handles": handle})[0]
+        return User(**data)
 
     @cached(cache=TTLCache(maxsize=1, ttl=10 * 60))
     def get_problems(self) -> list[Problem]:
