@@ -40,6 +40,34 @@ class Problem(BaseModel):
         return text
 
 
+class ParticipantType(str, Enum):
+    CONTESTANT = "CONTESTANT"
+    PRACTICE = "PRACTICE"
+    VIRTUAL = "VIRTUAL"
+    MANAGER = "MANAGER"
+    OUT_OF_COMPETITION = "OUT_OF_COMPETITION"
+
+
+class Party(BaseModel):
+    contestId: int
+    members: list[User]
+    participantType: ParticipantType
+
+
+class Submission(BaseModel):
+    id: int
+    contestId: int
+    creationTimeSeconds: int
+    problem: Problem
+    author: Party
+    programmingLanguage: str
+    verdict: Optional[str] = None
+
+    def get_author(self) -> Optional[User]:
+        if len(self.author.members) == 1:
+            return self.author.members[0]
+
+
 class ContestScoring(str, Enum):
     CF = "CF"
     IOI = "IOI"

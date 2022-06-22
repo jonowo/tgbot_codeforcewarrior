@@ -1,4 +1,4 @@
-import flask, random, logging
+import requests, flask, random, logging
 
 import google.cloud.logging
 from google.cloud import tasks_v2, firestore
@@ -21,6 +21,9 @@ db = firestore.Client(project='tgbot-340618')
 # load cloud task config
 task_client = tasks_v2.CloudTasksClient()
 task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-userdeletion")
+
+with open(".credentials") as f:
+    tgbot_token = f.read().strip()
 
 tg_chat_id = -1001669733846
 
@@ -141,7 +144,10 @@ class tgmsg_digester():
                 return
 
             if content == "":
-                self.text_response = "please enter codeforce username"
+                self.text_response = (
+                    "請申請帳號: https://codeforces.com/register\n"
+                    "並在此輸入 <code>/sign_on your_codeforces_username</code>"
+                )
             else:
                 try:
                     cf_user = cf_client.get_user(content)
@@ -153,6 +159,14 @@ class tgmsg_digester():
                 else:
                     doc_ref = db.collection("cfbot_handle").document(str(user["id"]))
                     doc_ref.set({"handle": cf_user.handle})
+
+                    requests.get(
+                        f"https://api.telegram.org/bot{tgbot_token}/sendMessage",
+                        params={
+                            "chat_id": self.data["message"]["chat"]["id"],
+                            "text": f"Successfully signed in as codeforces user {cf_user.handle}"
+                        }
+                    )
 
                     # Will fail (with no effect) if the user never requested to join / is already inside group
                     self.response = {

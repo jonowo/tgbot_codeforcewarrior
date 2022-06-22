@@ -18,16 +18,15 @@ class CodeforcesAPI:
     def _request(self, endpoint, *args, **kwargs):
         resp = self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
 
-        if resp.status_code == 404:
-            raise CodeforcesError("Not found")
-        resp.raise_for_status()
-
         if "Codeforces is temporarily unavailable." in resp.text:
             raise CodeforcesError("Codeforces is temporarily unavailable.")
 
         data = resp.json()
         if data["status"] == "FAILED":
-            raise CodeforcesError(data["comment"])
+            if "not found" in data["comment"].lower():
+                raise CodeforcesError("Not found")
+            else:
+                raise CodeforcesError(data["comment"])
         return data["result"]
 
     @cached(cache=TTLCache(maxsize=1024, ttl=60))
