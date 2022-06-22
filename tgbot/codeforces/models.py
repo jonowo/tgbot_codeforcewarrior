@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 from zoneinfo import ZoneInfo
+from string import capwords
 
 from pydantic import BaseModel
 
@@ -16,6 +17,21 @@ class User(BaseModel):
     rank: Optional[str] = None
     maxRating: Optional[int] = None
     maxRank: Optional[str] = None
+    lastOnlineTimeSeconds: int
+    registrationTimeSeconds: int
+
+    @property
+    def url(self):
+        return f"https://codeforces.com/profile/{self.handle}"
+
+    def __str__(self):
+        text = f"Handle: <a href='{self.url}'>{self.handle}</a>\n"
+        if self.rating:
+            text += f"Rating: {self.rating}, {capwords(self.rank)}\n"
+            text += f"Peak rating: {self.maxRating}, {capwords(self.maxRank)}"
+        else:
+            text += "No rating"
+        return text
 
 
 class Problem(BaseModel):

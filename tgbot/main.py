@@ -1,3 +1,5 @@
+from typing import Any, Optional
+
 import requests, flask, random, logging
 
 import google.cloud.logging
@@ -57,8 +59,8 @@ def select(tags, rating):
 class tgmsg_digester():
     def __init__(self, data):
         self.data = data
-        self.response = None  # response objects for other endpoints
-        self.text_response = None  # reply text in the same chat
+        self.response: Optional[dict[str, Any]] = None  # response objects for other endpoints
+        self.text_response: Optional[str] = None  # reply text in the same chat
         self.disable_web_page_preview = False
 
         try:
@@ -73,7 +75,7 @@ class tgmsg_digester():
                     user = data["message"]["from"]
                     if user["is_bot"]:
                         user = None
-                    self.command(command, splits[1], user=user)
+                    self.command(command, splits[1].strip(), user=user)
                 elif "new_chat_member" in message:
                     new_chat_member = message["new_chat_member"]
                     if new_chat_member["is_bot"] == False:
@@ -148,6 +150,9 @@ class tgmsg_digester():
                     "請申請帳號: https://codeforces.com/register\n"
                     "並在此輸入 <code>/sign_on your_codeforces_username</code>"
                 )
+            elif content == "tourist":
+                self.text_response = "咪扮"
+                return
             else:
                 try:
                     cf_user = cf_client.get_user(content)
@@ -157,6 +162,8 @@ class tgmsg_digester():
                     else:
                         raise e from None
                 else:
+                    # TODO: Check for cf handle collision
+
                     doc_ref = db.collection("cfbot_handle").document(str(user["id"]))
                     doc_ref.set({"handle": cf_user.handle})
 
@@ -174,6 +181,18 @@ class tgmsg_digester():
                         "chat_id": tg_chat_id,
                         "user_id": user["id"]
                     }
+        elif cmd == "/stalk":
+            if "reply_to_message" in self.data["message"]:
+                user_id = self.data["message"]["reply_to_message"]["from"]["id"]
+            else:
+                user_id = user["id"]
+            doc = db.collection("cfbot_handle").document(str(user_id)).get()
+            if doc.exists:
+                handle = doc.to_dict()["handle"]
+                cf_user = cf_client.get_user(handle)
+                self.text_response = str(cf_user)
+            else:
+                self.text_response = "Not yet use /sign_on"
         elif cmd == "/contests":
             contests = cf_client.get_contests()
             self.text_response = "\n\n".join([str(c) for c in contests])
@@ -185,8 +204,8 @@ class tgmsg_digester():
 
     def chat_join_request(self, chat_join_request):
         user_id = chat_join_request["from"]["id"]
-        doc_ref = db.collection("cfbot_handle").document(str(user_id))
-        if doc_ref.get().exists:
+        doc = db.collection("cfbot_handle").document(str(user_id)).get()
+        if doc.exists:
             self.response = {
                 "method": "approveChatJoinRequest",
                 "chat_id": tg_chat_id,
