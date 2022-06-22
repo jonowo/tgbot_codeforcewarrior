@@ -1,4 +1,7 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+HKT = ZoneInfo("Asia/Hong_Kong")
 
 
 def plural(unit: int) -> str:
@@ -25,3 +28,8 @@ def duration(td: timedelta) -> str:
         res.append(f"{seconds} second{plural(seconds)}")
 
     return " ".join(res[:2])
+
+
+def utc_timestamp_to_hkt(timestamp: int) -> datetime:
+    dt = datetime.utcfromtimestamp(timestamp)
+    return dt.replace(tzinfo=timezone.utc).astimezone(HKT)

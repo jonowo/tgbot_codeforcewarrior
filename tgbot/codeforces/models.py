@@ -1,14 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import Enum
-from typing import Optional
-from zoneinfo import ZoneInfo
 from string import capwords
+from typing import Optional
 
 from pydantic import BaseModel
 
-from .utils import duration
-
-HKT = ZoneInfo("Asia/Hong_Kong")
+from .utils import HKT, duration, utc_timestamp_to_hkt
 
 
 class User(BaseModel):
@@ -17,7 +14,7 @@ class User(BaseModel):
     rank: Optional[str] = None
     maxRating: Optional[int] = None
     maxRank: Optional[str] = None
-    lastOnlineTimeSeconds: int
+    lastOnlineTimeSeconds: int  # Not work?
     registrationTimeSeconds: int
 
     @property
@@ -108,8 +105,7 @@ class Contest(BaseModel):
 
     @property
     def start_time(self) -> datetime:
-        dt = datetime.utcfromtimestamp(self.startTimeSeconds)
-        return dt.replace(tzinfo=timezone.utc).astimezone(HKT)
+        return utc_timestamp_to_hkt(self.startTimeSeconds)
 
     @property
     def end_time(self) -> datetime:
