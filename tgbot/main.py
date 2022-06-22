@@ -1,11 +1,9 @@
-import requests, json, flask, random, logging, datetime
+import flask, random, logging
 
 import google.cloud.logging
-from google.cloud import tasks_v2
-from google.protobuf import timestamp_pb2
-from google.cloud import firestore
+from google.cloud import tasks_v2, firestore
 
-from codeforces import CodeforcesAPI
+from codeforces import CodeforcesAPI, CodeforcesError
 
 google.cloud.logging.Client().setup_logging()
 
@@ -24,9 +22,10 @@ db = firestore.Client(project='tgbot-340618')
 task_client = tasks_v2.CloudTasksClient()
 task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-userdeletion")
 
+tg_chat_id = -1001669733846
+
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
-cf_client.get_available_tags()  # Precompute
 
 
 def select(tags, rating):
@@ -47,8 +46,7 @@ def select(tags, rating):
             filtered_problems
         )
 
-    filtered_problems = list(filtered_problems)
-    if filtered_problems:
+    if filtered_problems := list(filtered_problems):
         return random.choice(filtered_problems)
     else:
         return None
@@ -56,30 +54,38 @@ def select(tags, rating):
 class tgmsg_digester():
     def __init__(self, data):
         self.data = data
-        self.response = None
+        self.response = None  # response objects for other endpoints
+        self.text_response = None  # reply text in the same chat
         self.disable_web_page_preview = False
-        self.sticker_file_id = None
 
-        if "message" in data:
-            message = data["message"]
-            if "text" in message:
-                text = message["text"]
-                splits = text.split(' ', 1)
-                command = splits[0].replace("@codeforcewarrior_bot", "")
-                if len(splits) == 1:
-                    splits.append("")
-                user = data["message"]["from"]
-                if user["is_bot"]:
-                    user = None
-                self.command(command, splits[1], user=user)
-            elif "new_chat_member" in message:
-                new_chat_member = message["new_chat_member"]
-                if new_chat_member["is_bot"] == False:
-                    self.new_member_join(new_chat_member)
+        try:
+            if "message" in data:
+                message = data["message"]
+                if "text" in message:
+                    text = message["text"]
+                    splits = text.split(' ', 1)
+                    command = splits[0].replace("@codeforcewarrior_bot", "")
+                    if len(splits) == 1:
+                        splits.append("")
+                    user = data["message"]["from"]
+                    if user["is_bot"]:
+                        user = None
+                    self.command(command, splits[1], user=user)
+                elif "new_chat_member" in message:
+                    new_chat_member = message["new_chat_member"]
+                    if new_chat_member["is_bot"] == False:
+                        self.new_member_join(new_chat_member)
+            elif "chat_join_request" in data:
+                self.chat_join_request(data["chat_join_request"])
+        except CodeforcesError as e:
+            if str(e) == "Codeforces is temporarily unavailable.":
+                self.text_response = "Codeforces is temporarily unavailable."
+            else:
+                raise e from None
 
     def command(self, cmd, content, user=None):
         if cmd == "/help":
-            self.response = "command: \n" + \
+            self.text_response = "command: \n" + \
                 "    /help - thats why you see me talking now \n" + \
                 "    /select - random question from codeforces \n" + \
                 "    /tags - show available tags \n" + \
@@ -96,10 +102,15 @@ class tgmsg_digester():
                 "if you are willing to contribute, please submit merge request for adding more function in: \n" + \
                 "    https://github.com/eepnt/tgbot_codeforcewarrior"
         elif cmd in ("/group_admin", "/group_girlgod"):
-            self.sticker_file_id = "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
+            self.response = {
+                "method": "sendSticker",
+                "chat_id": self.data["message"]["chat"]["id"],
+                "sticker": "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
+            }
         elif cmd == "/tags":
-            self.response = ", ".join(cf_client.get_available_tags())
+            self.text_response = ", ".join(cf_client.get_available_tags())
         elif cmd == "/select":
+            # TODO: Take rating and solved problems into account for registered users
             tags = set()
             rating = None
             try:
@@ -118,86 +129,77 @@ class tgmsg_digester():
                     else:
                         raise ValueError
             except (ValueError, AssertionError):
-                self.response = "Your query is invalid"
+                self.text_response = "Your query is invalid"
             else:
                 if problem := select(tags, rating):
-                    self.response = str(problem)
+                    self.text_response = str(problem)
                 else:
-                    self.response = "no problem match search criteria {} {}".format(tags, rating)
+                    self.text_response = "no problem match search criteria {} {}".format(tags, rating)
         elif cmd == "/sign_on":
             if user is None:
                 logging.error("unexpected response")
                 return
 
             if content == "":
-                self.response = "please enter codeforce username"
+                self.text_response = "please enter codeforce username"
             else:
-                response = requests.get("https://codeforces.com/api/user.info?handles={}".format(content))
-                logging.info({
-                    "response_code": response.status_code,
-                    "response_text": response.text,
-                })
-                response = response.json()
-                if response["status"] == "OK":
-                    """
-                    if response["result"][0]["lastOnlineTimeSeconds"] < int(time.time()) - 300:
-                        self.response = "i suspect this is not your account? please get online before signon"
-                        return
-                    """
-                    user_doc = db.collection('cfbot_user').document(str(user["id"]))
-                    user_doc.set({
-                        "tg_user": user,
-                        "cf_user": response,
-                    })
-                    self.response = "{} successfully signed on as codeforce user {}".format(user["first_name"], response["result"][0]["handle"])
+                try:
+                    cf_user = cf_client.get_user(content)
+                except CodeforcesError as e:
+                    if str(e) == "Not found":
+                        self.text_response = "This codeforces user cannot be found"
+                    else:
+                        raise e from None
                 else:
-                    self.response = "codeforce user \"{}\" cannot be found or invalid".format(content)
+                    doc_ref = db.collection("cfbot_handle").document(str(user["id"]))
+                    doc_ref.set({"handle": cf_user.handle})
+
+                    # Will fail (with no effect) if the user never requested to join / is already inside group
+                    self.response = {
+                        "method": "approveChatJoinRequest",
+                        "chat_id": tg_chat_id,
+                        "user_id": user["id"]
+                    }
         elif cmd == "/contests":
             contests = cf_client.get_contests()
-            self.response = "\n\n".join([str(c) for c in contests])
+            self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
 
     def new_member_join(self, user):
         if not user["is_bot"]:
-            timestamp = timestamp_pb2.Timestamp()
-            timestamp.FromDatetime(
-                datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=300)
-            )
-            task_client.create_task(parent=task_parent, task={
-                'http_request': {
-                    "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/check_user_signon",
-                    # 'http_method': tasks_v2.HttpMethod.POST,
-                    'headers': {
-                        "Content-type": "application/json"
-                    },
-                    'body': json.dumps({
-                        'tg_user': user['id'],
-                    }).encode('utf-8'),
-                },
-                'schedule_time': timestamp,
-            })
-            self.response = "Welcome {} \n".format(user["first_name"]) + \
-                "進入本群需持有codeforce account \n" + \
-                "請儘快申請帳號: https://codeforces.com/register \n" + \
-                "並於此群輸入 `/sign_on {{codeforce handle (username)}}`"
+            self.text_response = "妳好"
+
+    def chat_join_request(self, chat_join_request):
+        user_id = chat_join_request["from"]["id"]
+        doc_ref = db.collection("cfbot_handle").document(str(user_id))
+        if doc_ref.get().exists:
+            self.response = {
+                "method": "approveChatJoinRequest",
+                "chat_id": tg_chat_id,
+                "user_id": user_id
+            }
+        else:
+            self.response = {
+                "method": "sendMessage",
+                "chat_id": user_id,
+                "text": (
+                    "妳好，進入本群需持有 codeforces 帳號\n"
+                    "請申請帳號: https://codeforces.com/register\n"
+                    "並在此輸入 <code>/sign_on your_codeforces_username</code>"
+                ),
+                "parse_mode": "HTML"
+            }
 
     def response_output(self):
-        if self.response is not None:
+        if self.text_response and "message" in self.data:
             return {
                 "method": "sendMessage",
                 "chat_id": self.data["message"]["chat"]["id"],
-                'text': self.response,
+                'text': self.text_response,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": str(self.disable_web_page_preview).lower()
             }
-        elif self.sticker_file_id:
-            return {
-                "method": "sendSticker",
-                "chat_id": self.data["message"]["chat"]["id"],
-                "sticker": self.sticker_file_id
-            }
-        else:
-            return None
+        return self.response
 
 @app.route('/', methods=["POST"])
 def hello():
