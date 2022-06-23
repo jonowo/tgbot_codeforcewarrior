@@ -27,7 +27,7 @@ class User(BaseModel):
             text += f"Rating: {self.rating}, {capwords(self.rank)}\n"
             text += f"Peak rating: {self.maxRating}, {capwords(self.maxRank)}"
         else:
-            text += "No rating"
+            text += "Unrated"
         return text
 
 

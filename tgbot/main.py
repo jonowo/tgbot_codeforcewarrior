@@ -5,17 +5,15 @@ import requests, flask, random, logging
 import google.cloud.logging
 from google.cloud import tasks_v2, firestore
 
-from codeforces import CodeforcesAPI, CodeforcesError
+from codeforces import CodeforcesAPI, CodeforcesError, Problem
 
 google.cloud.logging.Client().setup_logging()
 
 try:
-  import googlecloudinfoger
-  googlecloudinfoger.enable(
-    breakpoint_enable_canary=False
-  )
+    import googlecloudinfoger
+    googlecloudinfoger.enable(breakpoint_enable_canary=False)
 except ImportError:
-  pass
+    pass
 
 # load firestore
 db = firestore.Client(project='tgbot-340618')
@@ -33,23 +31,22 @@ app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
 
 
-def select(tags, rating):
+def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
     logging.info({
         "tags": list(tags),
         "rating": rating,
     })
 
     filtered_problems = cf_client.get_problems()
+    if "*special" not in tags:
+        filtered_problems = [p for p in filtered_problems if "*special" not in p.tags]
     if tags:
-        filtered_problems = filter(
-            lambda problem: tags.issubset(set(problem.tags)),
-            filtered_problems
-        )
+        filtered_problems = [p for p in filtered_problems if tags <= set(p.tags)]  # Subset
     if rating:
-        filtered_problems = filter(
-            lambda problem: problem.rating and rating[0] <= problem.rating <= rating[1],
-            filtered_problems
-        )
+        filtered_problems = [
+            p for p in filtered_problems
+            if p.rating and rating[0] <= p.rating <= rating[1]
+        ]
 
     if filtered_problems := list(filtered_problems):
         return random.choice(filtered_problems)
@@ -152,7 +149,6 @@ class tgmsg_digester():
                 )
             elif content == "tourist":
                 self.text_response = "咪扮"
-                return
             else:
                 try:
                     cf_user = cf_client.get_user(content)
@@ -162,7 +158,15 @@ class tgmsg_digester():
                     else:
                         raise e from None
                 else:
-                    # TODO: Check for cf handle collision
+                    # Check for cf handle collision
+                    query = db.collection("cfbot_handle").where("handle", "==", cf_user.handle)
+                    for doc in query.stream():
+                        if doc.id != str(user["id"]):
+                            self.text_response = (
+                                "已有成員已登記此 handle。\n"
+                                "如果你確實持有這 codeforces 帳號，請聯絡 @jonowowo。"
+                            )
+                            return
 
                     doc_ref = db.collection("cfbot_handle").document(str(user["id"]))
                     doc_ref.set({"handle": cf_user.handle})

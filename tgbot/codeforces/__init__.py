@@ -30,10 +30,10 @@ class CodeforcesAPI:
         return data["result"]
 
     def get_user(self, handle: str) -> User:
-        return self.get_users([handle])[0]
+        return self.get_users(handle)[0]
 
     @cached(cache=TTLCache(maxsize=1024, ttl=60))
-    def get_users(self, handles: list[str]) -> list[User]:
+    def get_users(self, *handles: str) -> list[User]:
         data = self._request("user.info", params={"handles": ";".join(handles)})
         return [User(**u) for u in data]
 
