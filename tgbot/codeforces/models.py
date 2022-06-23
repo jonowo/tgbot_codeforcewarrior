@@ -14,8 +14,6 @@ class User(BaseModel):
     rank: Optional[str] = None
     maxRating: Optional[int] = None
     maxRank: Optional[str] = None
-    lastOnlineTimeSeconds: int  # Not work?
-    registrationTimeSeconds: int
 
     @property
     def url(self):
@@ -46,8 +44,12 @@ class Problem(BaseModel):
     def url(self) -> str:
         return f"https://codeforces.com/problemset/problem/{self.contestId}/{self.index}"
 
+    @property
+    def linked_name(self) -> str:
+        return f"<a href='{self.url}'>{self.id} - {self.name}</a>"
+
     def __str__(self):
-        text = f"<a href='{self.url}'>{self.id} - {self.name}</a>\n"
+        text = self.linked_name + "\n"
         text += f"Tags: {', '.join(self.tags)}\n"
         text += f"Rating: {self.rating}"
         return text
@@ -65,6 +67,10 @@ class Party(BaseModel):
     contestId: int
     members: list[User]
     participantType: ParticipantType
+    teamId: Optional[int] = None
+
+    def not_team(self) -> bool:
+        return self.teamId is None
 
 
 class Submission(BaseModel):
@@ -75,9 +81,15 @@ class Submission(BaseModel):
     author: Party
     programmingLanguage: str
     verdict: Optional[str] = None
+    testset: str
+    passedTestCount: int
+
+    @property
+    def time(self) -> datetime:
+        return utc_timestamp_to_hkt(self.creationTimeSeconds)
 
     def get_author(self) -> Optional[User]:
-        if len(self.author.members) == 1:
+        if self.author.not_team():
             return self.author.members[0]
 
 

@@ -1,9 +1,10 @@
 import functools
+from typing import Optional
 
 import requests
 from cachetools import TTLCache, cached
 
-from .models import Contest, ContestPhase, Problem, User
+from .models import Contest, ContestPhase, Problem, Submission, User
 
 
 class CodeforcesError(Exception):
@@ -36,6 +37,13 @@ class CodeforcesAPI:
     def get_users(self, *handles: str) -> list[User]:
         data = self._request("user.info", params={"handles": ";".join(handles)})
         return [User(**u) for u in data]
+
+    def get_status(self, handle: str, count: Optional[int] = None) -> list[Submission]:
+        params = {"handle": handle}
+        if count is not None:
+            params["count"] = count
+        data = self._request("user.status", params=params)
+        return [Submission(**s) for s in data]
 
     @cached(cache=TTLCache(maxsize=1, ttl=10 * 60))
     def get_problems(self) -> list[Problem]:

@@ -1,17 +1,22 @@
+import json
+import logging
+import random
+from datetime import datetime, timedelta
 from typing import Any, Optional
 
-import requests, flask, random, logging
-
+import flask
 import google.cloud.logging
-from google.cloud import tasks_v2, firestore
+from google.cloud import firestore, tasks_v2
+from google.protobuf import timestamp_pb2
 
 from codeforces import CodeforcesAPI, CodeforcesError, Problem
 
 google.cloud.logging.Client().setup_logging()
 
 try:
-    import googlecloudinfoger
-    googlecloudinfoger.enable(breakpoint_enable_canary=False)
+    import googleclouddebugger
+
+    googleclouddebugger.enable(breakpoint_enable_canary=False)
 except ImportError:
     pass
 
@@ -20,7 +25,7 @@ db = firestore.Client(project='tgbot-340618')
 
 # load cloud task config
 task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-userdeletion")
+task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
 
 with open(".credentials") as f:
     tgbot_token = f.read().strip()
@@ -29,6 +34,24 @@ tg_chat_id = -1001669733846
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
+
+
+def schedule_verify(user_id: int, dt: datetime):
+    data = {"user_id": user_id}
+
+    timestamp = timestamp_pb2.Timestamp()
+    timestamp.FromDatetime(dt)
+
+    task = {
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/cf_verification",
+            "headers": {"Content-type": "application/json"},
+            "body": json.dumps(data).encode("utf-8")
+        },
+        "schedule_time": timestamp
+    }
+    task_client.create_task(parent=task_parent, task=task)
 
 
 def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
@@ -52,6 +75,7 @@ def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
         return random.choice(filtered_problems)
     else:
         return None
+
 
 class tgmsg_digester():
     def __init__(self, data):
@@ -87,22 +111,24 @@ class tgmsg_digester():
 
     def command(self, cmd, content, user=None):
         if cmd == "/help":
-            self.text_response = "command: \n" + \
-                "    /help - thats why you see me talking now \n" + \
-                "    /select - random question from codeforces \n" + \
-                "    /tags - show available tags \n" + \
-                " \n" + \
-                "arguments: \n" + \
-                "    tags=data structures,dp - csv form of tags \n" + \
-                "    rating=1800-2000 - rating range \n" + \
-                " \n" + \
-                "example usage: \n" + \
-                "    /select rating=1800-2000 \n" + \
-                "    /select tags=data structures,dp|rating=1800-2000 \n" + \
-                "    /select@codeforcewarrior_bot tags=data structures,dp|rating=1800-2000 \n" + \
-                " \n" + \
-                "if you are willing to contribute, please submit merge request for adding more function in: \n" + \
-                "    https://github.com/eepnt/tgbot_codeforcewarrior"
+            self.text_response = (
+                "Commands:\n"
+                "    /help - Hi\n"
+                "    /tags - Available tags\n"
+                "    /select - Random codeforces problem\n"
+                "        Parameters:\n"
+                "            tags: csv form of tags\n"
+                "            rating: rating range\n"
+                "        Example usage:\n"
+                "            /select rating=1800-2000\n"
+                "            /select tags=math,dp\n"
+                "            /select tags=fft|rating=2400\n"
+                "    /sign_on - Confirm your identity as a codeforces user\n"
+                "    /stalk - Show codeforces profile\n\n"
+                "If you are willing to contribute, please submit a PR "
+                "<a href='https://github.com/eepnt/tgbot_codeforcewarrior'>here</a>."
+            )
+            self.disable_web_page_preview = True
         elif cmd in ("/group_admin", "/group_girlgod"):
             self.response = {
                 "method": "sendSticker",
@@ -161,30 +187,34 @@ class tgmsg_digester():
                     # Check for cf handle collision
                     query = db.collection("cfbot_handle").where("handle", "==", cf_user.handle)
                     for doc in query.stream():
-                        if doc.id != str(user["id"]):
+                        if doc.id == str(user["id"]):
+                            self.text_response = "你已登記此 handle"
+                        else:
                             self.text_response = (
-                                "已有成員已登記此 handle。\n"
-                                "如果你確實持有這 codeforces 帳號，請聯絡 @jonowowo。"
+                                "已有成員已登記此 handle\n"
+                                "如果你確實持有這 codeforces 帳號，請聯絡 @jonowowo"
                             )
-                            return
+                        return
 
-                    doc_ref = db.collection("cfbot_handle").document(str(user["id"]))
-                    doc_ref.set({"handle": cf_user.handle})
+                    problem = select(set(), rating=[3000, 3500])
+                    doc_ref = db.collection("cfbot_verification").document(str(user["id"]))
+                    doc_ref.set({
+                        "handle": cf_user.handle,
+                        "problem_id": problem.id,
+                        "chat_id": self.data["message"]["chat"]["id"],
+                        "message_id": self.data["message"]["message_id"],
+                        "count": 0
+                    })
 
-                    requests.get(
-                        f"https://api.telegram.org/bot{tgbot_token}/sendMessage",
-                        params={
-                            "chat_id": self.data["message"]["chat"]["id"],
-                            "text": f"Successfully signed in as codeforces user {cf_user.handle}"
-                        }
+                    # Schedule function execution
+                    now = datetime.utcnow()
+                    schedule_verify(user["id"], now + timedelta(seconds=60))
+
+                    self.text_response = (
+                        f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
+                        "你可以忽略題目要求並提交錯誤的程式\n"
+                        "我在提交後一分鐘內會確認你的身份"
                     )
-
-                    # Will fail (with no effect) if the user never requested to join / is already inside group
-                    self.response = {
-                        "method": "approveChatJoinRequest",
-                        "chat_id": tg_chat_id,
-                        "user_id": user["id"]
-                    }
         elif cmd == "/stalk":
             if "reply_to_message" in self.data["message"]:
                 user_id = self.data["message"]["reply_to_message"]["from"]["id"]
@@ -238,6 +268,7 @@ class tgmsg_digester():
             }
         return self.response
 
+
 @app.route('/', methods=["POST"])
 def hello():
     try:
@@ -245,7 +276,7 @@ def hello():
         logging.info(data)
         response = tgmsg_digester(data).response_output()
         logging.info(response)
-        if response != None:
+        if response:
             return flask.jsonify(response)
         else:
             return ""
@@ -254,6 +285,6 @@ def hello():
         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
         return ""
 
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8080, info=True)
-
