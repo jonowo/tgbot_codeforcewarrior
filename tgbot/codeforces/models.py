@@ -93,64 +93,6 @@ class Submission(BaseModel):
             return self.author.members[0]
 
 
-class User(BaseModel):
-    handle: str
-    rating: Optional[int] = None
-    rank: Optional[str] = None
-    maxRating: Optional[int] = None
-    maxRank: Optional[str] = None
-
-
-class Problem(BaseModel):
-    contestId: int
-    index: str
-    name: str
-    rating: Optional[int] = None
-    tags: list[str]
-
-    @property
-    def id(self) -> str:
-        return f"{self.contestId}{self.index}"
-
-    @property
-    def url(self) -> str:
-        return f"https://codeforces.com/problemset/problem/{self.contestId}/{self.index}"
-
-    def __str__(self):
-        text = f"<a href='{self.url}'>{self.id} - {self.name}</a>\n"
-        text += f"Tags: {', '.join(self.tags)}\n"
-        text += f"Rating: {self.rating}"
-        return text
-
-
-class ParticipantType(str, Enum):
-    CONTESTANT = "CONTESTANT"
-    PRACTICE = "PRACTICE"
-    VIRTUAL = "VIRTUAL"
-    MANAGER = "MANAGER"
-    OUT_OF_COMPETITION = "OUT_OF_COMPETITION"
-
-
-class Party(BaseModel):
-    contestId: int
-    members: list[User]
-    participantType: ParticipantType
-
-
-class Submission(BaseModel):
-    id: int
-    contestId: int
-    creationTimeSeconds: int
-    problem: Problem
-    author: Party
-    programmingLanguage: str
-    verdict: Optional[str] = None
-
-    def get_author(self) -> Optional[User]:
-        if len(self.author.members) == 1:
-            return self.author.members[0]
-
-
 class ContestScoring(str, Enum):
     CF = "CF"
     IOI = "IOI"
