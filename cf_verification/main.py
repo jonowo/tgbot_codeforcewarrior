@@ -115,9 +115,9 @@ def cf_verification(request: Request):
 
         return "verification successful"
 
-    if count < 9:
+    if count < 19:
         now = datetime.utcnow()
-        schedule_verify(user_id, now + timedelta(seconds=60))
+        schedule_verify(user_id, now + timedelta(seconds=30))
         doc_ref.update({"count": count + 1})
         return "pending verification"
 

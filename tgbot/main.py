@@ -163,7 +163,7 @@ class tgmsg_digester():
                     self.text_response = str(problem)
                 else:
                     self.text_response = "no problem match search criteria {} {}".format(tags, rating)
-        elif cmd == "/sign_on":
+        elif cmd in ("/sign_on", "/signon", "/sign_in", "/signin"):
             if user is None:
                 logging.error("unexpected response")
                 return
@@ -208,12 +208,12 @@ class tgmsg_digester():
 
                     # Schedule function execution
                     now = datetime.utcnow()
-                    schedule_verify(user["id"], now + timedelta(seconds=60))
+                    schedule_verify(user["id"], now + timedelta(seconds=30))
 
                     self.text_response = (
                         f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
                         "你可以忽略題目要求並提交錯誤的程式\n"
-                        "我在提交後一分鐘內會確認你的身份"
+                        "我在提交後半分鐘內會確認你的身份"
                     )
         elif cmd == "/stalk":
             if "reply_to_message" in self.data["message"]:
