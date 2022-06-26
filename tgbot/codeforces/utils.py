@@ -4,6 +4,10 @@ from zoneinfo import ZoneInfo
 HKT = ZoneInfo("Asia/Hong_Kong")
 
 
+class CodeforcesError(Exception):
+    pass
+
+
 def plural(unit: int) -> str:
     return "" if unit == 1 else "s"
 

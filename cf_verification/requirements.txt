@@ -6,3 +6,5 @@ google-python-cloud-debugger
 requests
 pydantic
 cachetools
+aiohttp[speedups]
+aiocache

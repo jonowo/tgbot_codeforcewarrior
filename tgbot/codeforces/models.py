@@ -63,9 +63,13 @@ class ParticipantType(str, Enum):
     OUT_OF_COMPETITION = "OUT_OF_COMPETITION"
 
 
+class Member(BaseModel):
+    handle: str
+
+
 class Party(BaseModel):
     contestId: int
-    members: list[User]
+    members: list[Member]
     participantType: ParticipantType
     teamId: Optional[int] = None
 
@@ -87,10 +91,6 @@ class Submission(BaseModel):
     @property
     def time(self) -> datetime:
         return utc_timestamp_to_hkt(self.creationTimeSeconds)
-
-    def get_author(self) -> Optional[User]:
-        if self.author.not_team():
-            return self.author.members[0]
 
 
 class ContestScoring(str, Enum):
@@ -132,11 +132,11 @@ class Contest(BaseModel):
             self.start_time.day)
         text += self.end_time.strftime(" - %H:%M\n")
 
+        text += f"<a href='{self.url}'>{self.name}</a>\n"
+
         now = datetime.now(HKT)
         if now < self.start_time:
-            text += f"Starts in {duration(self.start_time - now)}\n"
+            text += f"Starts in {duration(self.start_time - now)}"
         else:
-            text += f"Ends in {duration(self.end_time - now)}\n"
-
-        text += f"<a href='{self.url}'>{self.name}</a>"
+            text += f"Ends in {duration(self.end_time - now)}"
         return text
