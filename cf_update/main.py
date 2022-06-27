@@ -77,7 +77,6 @@ async def db_retrieve_status(app: web.Application, handle: str) -> list[Submissi
 
 
 async def update(app: web.Application, handle: str) -> None:
-    logger.info(f"Updating {handle}")
     updated_status = []
     async with lock:
         old_status, new_status = await asyncio.gather(
@@ -124,8 +123,8 @@ async def update_status_forever(app: web.Application) -> None:
     try:
         while True:
             for handle in await get_handles(app):
-                # At least 5s between each update
-                await asyncio.gather(update(app, handle), asyncio.sleep(5))
+                # At least 3s between each update
+                await asyncio.gather(update(app, handle), asyncio.sleep(3))
     except asyncio.CancelledError:
         pass
 

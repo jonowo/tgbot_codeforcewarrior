@@ -38,14 +38,14 @@ tg_chat_id = -1001669733846
 cf_client = CodeforcesAPI()
 
 
-def make_tg_api_request(endpoint, params: dict[str, Any]):
-    requests.get(
+def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
+    return requests.get(
         f"https://api.telegram.org/bot{tgbot_token}/{endpoint}",
         params=params
     )
 
 
-def schedule_verify(user_id: int, dt: datetime):
+def schedule_task(endpoint: str, user_id: int, dt: datetime) -> None:
     data = {"user_id": user_id}
 
     timestamp = timestamp_pb2.Timestamp()
@@ -54,7 +54,7 @@ def schedule_verify(user_id: int, dt: datetime):
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/cf_verification",
+            "url": f"https://asia-northeast1-tgbot-340618.cloudfunctions.net/{endpoint}",
             "headers": {"Content-type": "application/json"},
             "body": json.dumps(data).encode("utf-8")
         },
@@ -73,7 +73,7 @@ def verify(handle: str, problem_id: str) -> bool:
 
 
 @functions_framework.http
-def cf_verification(request: Request):
+def cf_verification(request: Request) -> str:
     user_id = request.get_json()["user_id"]
 
     doc_ref = db.collection("cfbot_verification").document(str(user_id))
@@ -128,8 +128,7 @@ def cf_verification(request: Request):
         return "verification successful"
 
     if count < 19:
-        now = datetime.utcnow()
-        schedule_verify(user_id, now + timedelta(seconds=30))
+        schedule_task("cf_verification", user_id, datetime.utcnow() + timedelta(seconds=30))
         doc_ref.update({"count": count + 1})
         return "pending verification"
 
@@ -146,4 +145,18 @@ def cf_verification(request: Request):
 
     return "verification failed"
 
-# Add new route for delete join request
+
+@functions_framework.http
+def decline_join_request(request: Request) -> str:
+    user_id = request.get_json()["user_id"]
+
+    # Will fail (with no effect) if the user never requested to join / is already inside group
+    make_tg_api_request(
+        "declineChatJoinRequest",
+        params={
+            "chat_id": tg_chat_id,
+            "user_id": user_id
+        }
+    )
+
+    return ""

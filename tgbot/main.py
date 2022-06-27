@@ -6,6 +6,7 @@ from typing import Any, Optional
 
 import flask
 import google.cloud.logging
+import requests
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
@@ -35,10 +36,15 @@ tg_chat_id = -1001669733846
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
 
-# TODO: Set command list
+
+def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
+    return requests.get(
+        f"https://api.telegram.org/bot{tgbot_token}/{endpoint}",
+        params=params
+    )
 
 
-def schedule_verify(user_id: int, dt: datetime):
+def schedule_task(endpoint: str, user_id: int, dt: datetime):
     data = {"user_id": user_id}
 
     timestamp = timestamp_pb2.Timestamp()
@@ -47,7 +53,7 @@ def schedule_verify(user_id: int, dt: datetime):
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
-            "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/cf_verification",
+            "url": f"https://asia-northeast1-tgbot-340618.cloudfunctions.net/{endpoint}",
             "headers": {"Content-type": "application/json"},
             "body": json.dumps(data).encode("utf-8")
         },
@@ -57,11 +63,6 @@ def schedule_verify(user_id: int, dt: datetime):
 
 
 def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
-    logging.info({
-        "tags": list(tags),
-        "rating": rating,
-    })
-
     filtered_problems = cf_client.get_problems()
     if "*special" not in tags:
         filtered_problems = [p for p in filtered_problems if "*special" not in p.tags]
@@ -140,7 +141,6 @@ class tgmsg_digester():
         elif cmd == "/tags":
             self.text_response = ", ".join(cf_client.get_available_tags())
         elif cmd == "/select":
-            # TODO: Take rating and solved problems into account for registered users
             tags = set()
             rating = None
             try:
@@ -208,9 +208,8 @@ class tgmsg_digester():
                         "count": 0
                     })
 
-                    # Schedule function execution
-                    now = datetime.utcnow()
-                    schedule_verify(user["id"], now + timedelta(seconds=30))
+                    schedule_task("cf_verification", user["id"], datetime.utcnow() + timedelta(seconds=30))
+                    schedule_task("decline_join_request", user["id"], datetime.utcnow() + timedelta(seconds=30 * 60))
 
                     self.text_response = (
                         f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
@@ -288,5 +287,21 @@ def hello():
         return ""
 
 
-if __name__ == '__main__':
+def main():
+    resp = make_tg_api_request("setMyCommands", params={
+        "commands": json.dumps([
+            {"command": "help", "description": "See help message"},
+            {"command": "sign_on", "description": "Verify your codeforces handle"},
+            {"command": "stalk", "description": "Show codeforces profile"},
+            {"command": "select", "description": "Get a problem"},
+            {"command": "tags", "description": "List problem tags"},
+            {"command": "contests", "description": "See upcoming contests"}
+        ])
+    })
+    resp.raise_for_status()
+
     app.run(host='127.0.0.1', port=8080, info=True)
+
+
+if __name__ == '__main__':
+    main()
