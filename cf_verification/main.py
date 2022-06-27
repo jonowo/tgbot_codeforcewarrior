@@ -144,19 +144,3 @@ def cf_verification(request: Request) -> str:
     )
 
     return "verification failed"
-
-
-@functions_framework.http
-def decline_join_request(request: Request) -> str:
-    user_id = request.get_json()["user_id"]
-
-    # Will fail (with no effect) if the user never requested to join / is already inside group
-    make_tg_api_request(
-        "declineChatJoinRequest",
-        params={
-            "chat_id": tg_chat_id,
-            "user_id": user_id
-        }
-    )
-
-    return ""

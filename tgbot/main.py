@@ -209,7 +209,6 @@ class tgmsg_digester():
                     })
 
                     schedule_task("cf_verification", user["id"], datetime.utcnow() + timedelta(seconds=30))
-                    schedule_task("decline_join_request", user["id"], datetime.utcnow() + timedelta(seconds=30 * 60))
 
                     self.text_response = (
                         f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
@@ -257,6 +256,7 @@ class tgmsg_digester():
                 ),
                 "parse_mode": "HTML"
             }
+            schedule_task("decline_join_request", user_id, datetime.utcnow() + timedelta(seconds=30 * 60))
 
     def response_output(self):
         if self.text_response and "message" in self.data:

@@ -1,0 +1,5 @@
+google-cloud-logging
+google-python-cloud-debugger
+functions-framework==3.*
+python-dotenv
+requests
