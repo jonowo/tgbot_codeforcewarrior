@@ -1,11 +1,12 @@
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Any
 
 import functions_framework
 import google.cloud.logging
-import google.cloud.logging
 import requests
+from dotenv import load_dotenv
 from flask import Request
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
@@ -29,9 +30,9 @@ db = firestore.Client(project='tgbot-340618')
 task_client = tasks_v2.CloudTasksClient()
 task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
 
-with open(".credentials") as f:
-    tgbot_token = f.read().strip()
-
+load_dotenv()
+tgbot_token = os.environ["TOKEN"]
+SECRET = os.environ["SECRET"]
 tg_chat_id = -1001669733846
 
 cf_client = CodeforcesAPI()
@@ -63,11 +64,11 @@ def schedule_verify(user_id: int, dt: datetime):
 
 
 def verify(handle: str, problem_id: str) -> bool:
-    submissions = cf_client.get_status(handle, count=10)
-    submissions = [s for s in submissions if s.author.not_team() and s.problem.id == problem_id]
+    status = cf_client.get_status(handle, count=10)
+    status = [s for s in status if s.problem.id == problem_id]
     return any(
         datetime.now(HKT) - submission.time <= timedelta(seconds=10 * 60)
-        for submission in submissions
+        for submission in status
     )
 
 
@@ -113,6 +114,17 @@ def cf_verification(request: Request):
             }
         )
 
+        handles = []
+        for doc in db.collection("cfbot_handle").stream():
+            handles.append(doc.to_dict()["handle"])
+
+        # Notify cf_update
+        requests.post(
+            "http://35.74.183.91/",
+            json={"handles": handles},
+            headers={"X-Auth-Token": SECRET}
+        )
+
         return "verification successful"
 
     if count < 19:
@@ -133,3 +145,5 @@ def cf_verification(request: Request):
     )
 
     return "verification failed"
+
+# Add new route for delete join request
