@@ -2,5 +2,6 @@
 **/__pycache__/
 **/.gcloudignore
 **/.credentials
+**/.env
 **/codeforces/
 !tgbot/codeforces/

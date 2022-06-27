@@ -47,7 +47,18 @@ class AsyncCodeforcesAPI:
         if count is not None:
             params["count"] = count
         data = await self._request("user.status", params=params)
-        return [Submission(**s) for s in data]
+        status = [Submission(**s) for s in data]
+        status = [s for s in status if s.author.not_team() and s.problem.problemsetName is None]
+        return status
+
+    @cached(ttl=5 * 60)
+    async def get_contest(self, contest_id: int) -> Contest:
+        # Assumes contest has already started
+        data = await self._request(
+            "contest.standings",
+            params={"contestId": contest_id, "handles": "jonowo"}  # dummy handle
+        )
+        return Contest(**data["contest"])
 
     @cached(ttl=5 * 60)
     async def get_contests(self) -> list[Contest]:

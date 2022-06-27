@@ -19,8 +19,12 @@ class User(BaseModel):
     def url(self):
         return f"https://codeforces.com/profile/{self.handle}"
 
-    def __str__(self):
-        text = f"Handle: <a href='{self.url}'>{self.handle}</a>\n"
+    @property
+    def linked_name(self) -> str:
+        return f"<a href='{self.url}'>{self.handle}</a>"
+
+    def __str__(self) -> str:
+        text = f"Handle: {self.linked_name}\n"
         if self.rating:
             text += f"Rating: {self.rating}, {capwords(self.rank)}\n"
             text += f"Peak rating: {self.maxRating}, {capwords(self.maxRank)}"
@@ -30,8 +34,9 @@ class User(BaseModel):
 
 
 class Problem(BaseModel):
-    contestId: int
-    index: str
+    contestId: Optional[int]
+    index: Optional[str]
+    problemsetName: Optional[str]
     name: str
     rating: Optional[int] = None
     tags: list[str]
@@ -48,7 +53,7 @@ class Problem(BaseModel):
     def linked_name(self) -> str:
         return f"<a href='{self.url}'>{self.id} - {self.name}</a>"
 
-    def __str__(self):
+    def __str__(self) -> str:
         text = self.linked_name + "\n"
         text += f"Tags: {', '.join(self.tags)}\n"
         text += f"Rating: {self.rating}"
@@ -63,34 +68,14 @@ class ParticipantType(str, Enum):
     OUT_OF_COMPETITION = "OUT_OF_COMPETITION"
 
 
-class Member(BaseModel):
-    handle: str
-
-
 class Party(BaseModel):
-    contestId: int
-    members: list[Member]
+    contestId: Optional[int]
+    members: list[User]
     participantType: ParticipantType
     teamId: Optional[int] = None
 
     def not_team(self) -> bool:
         return self.teamId is None
-
-
-class Submission(BaseModel):
-    id: int
-    contestId: int
-    creationTimeSeconds: int
-    problem: Problem
-    author: Party
-    programmingLanguage: str
-    verdict: Optional[str] = None
-    testset: str
-    passedTestCount: int
-
-    @property
-    def time(self) -> datetime:
-        return utc_timestamp_to_hkt(self.creationTimeSeconds)
 
 
 class ContestScoring(str, Enum):
@@ -127,7 +112,7 @@ class Contest(BaseModel):
     def url(self) -> str:
         return f"https://codeforces.com/contests/{self.id}"
 
-    def __str__(self):
+    def __str__(self) -> str:
         text = self.start_time.strftime("%b {} (%a) %H:%M").format(
             self.start_time.day)
         text += self.end_time.strftime(" - %H:%M\n")
@@ -139,4 +124,67 @@ class Contest(BaseModel):
             text += f"Starts in {duration(self.start_time - now)}"
         else:
             text += f"Ends in {duration(self.end_time - now)}"
+
+        return text
+
+
+class Submission(BaseModel):
+    id: int
+    contestId: Optional[int]
+    creationTimeSeconds: int
+    problem: Problem
+    author: Party
+    programmingLanguage: str
+    verdict: Optional[str] = None
+    testset: str
+    passedTestCount: int
+
+    def __eq__(self, other: "Submission") -> bool:
+        return self.id == other.id and self.verdict == other.verdict and self.testset == other.testset
+
+    @property
+    def time(self) -> datetime:
+        return utc_timestamp_to_hkt(self.creationTimeSeconds)
+
+    # @property
+    # def url(self) -> str:
+    #     return f"https://codeforces.com/contest/{self.contestId}/submission/{self.id}"
+
+    def get_author(self) -> Optional[User]:
+        if self.author.not_team():
+            return self.author.members[0]
+
+    def is_fst(self, contest: Contest) -> bool:
+        """Check if the submission failed main tests after passing pretests during contest."""
+        return (
+                contest.type in (ContestScoring.CF, ContestScoring.IOI)
+                and self.author.participantType in (ParticipantType.CONTESTANT, ParticipantType.OUT_OF_COMPETITION)
+                and self.testset.startswith("TESTS")
+                and self.verdict is not None
+                and self.verdict not in ("OK", "TESTING", "CHALLENGED", "SKIPPED", "PARTIAL")
+        )
+
+    def should_notify(self, contest: Contest) -> bool:
+        """Determine if the submission should be announced in group."""
+        if self.verdict == "TESTING":
+            return False
+
+        if self.verdict in ("OK", "CHALLENGED"):
+            return True
+
+        return self.is_fst(contest)
+
+    def __str__(self) -> str:
+        """Group notification for submission update."""
+        text = self.get_author().linked_name + " "
+        if self.verdict == "OK":
+            if self.testset == "PRETESTS":
+                text += f"passed all {self.passedTestCount} pretests on {self.problem.linked_name}"
+            else:
+                text += f"passed all {self.passedTestCount} main tests on {self.problem.linked_name}"
+        elif self.verdict == "CHALLENGED":
+            text += f"was hacked on {self.problem.linked_name}"
+        else:
+            text += f"FSTed on {self.problem.linked_name}"
+
         return text

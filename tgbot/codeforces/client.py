@@ -40,12 +40,16 @@ class CodeforcesAPI:
         if count is not None:
             params["count"] = count
         data = self._request("user.status", params=params)
-        return [Submission(**s) for s in data]
+        status = [Submission(**s) for s in data]
+        status = [s for s in status if s.author.not_team() and s.problem.problemsetName is None]
+        return status
 
     @cached(cache=TTLCache(maxsize=1, ttl=10 * 60))
     def get_problems(self) -> list[Problem]:
         data = self._request("problemset.problems")["problems"]
-        return [Problem(**p) for p in data]
+        problems = [Problem(**p) for p in data]
+        problems = [p for p in problems if p.problemsetName is None]  # codeforces problems only
+        return problems
 
     @cached(cache={})  # Store forever
     def get_available_tags(self) -> set[str]:

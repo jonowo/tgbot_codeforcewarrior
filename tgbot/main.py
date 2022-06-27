@@ -35,6 +35,8 @@ tg_chat_id = -1001669733846
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
 
+# TODO: Set command list
+
 
 def schedule_verify(user_id: int, dt: datetime):
     data = {"user_id": user_id}
