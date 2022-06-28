@@ -2,6 +2,6 @@ python-dotenv
 requests
 pydantic
 cachetools
-aioboto3[s3cse]
 aiohttp[speedups]
 aiocache
+aioboto3[s3cse]

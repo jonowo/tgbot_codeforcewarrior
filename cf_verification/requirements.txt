@@ -3,9 +3,9 @@ google-cloud-logging
 google-cloud-firestore
 google-cloud-tasks==2.7.1
 google-python-cloud-debugger
+python-dotenv
 requests
 pydantic
 cachetools
 aiohttp[speedups]
 aiocache
-python-dotenv

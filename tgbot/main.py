@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import random
 import traceback
 from datetime import datetime, timedelta
@@ -8,6 +9,7 @@ from typing import Any, Optional
 import flask
 import google.cloud.logging
 import requests
+from dotenv import load_dotenv
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
@@ -29,9 +31,8 @@ db = firestore.Client(project='tgbot-340618')
 task_client = tasks_v2.CloudTasksClient()
 task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
 
-with open(".credentials") as f:
-    tgbot_token = f.read().strip()
-
+load_dotenv()
+tgbot_token = os.environ["TOKEN"]
 tg_chat_id = -1001669733846
 
 app = flask.Flask(__name__)

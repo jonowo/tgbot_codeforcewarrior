@@ -1,7 +1,6 @@
 .idea/
 **/__pycache__/
 **/.gcloudignore
-**/.credentials
 **/.env
 **/codeforces/
 !tgbot/codeforces/
