@@ -78,7 +78,6 @@ async def db_retrieve_status(app: web.Application, handle: str) -> list[Submissi
 
 
 async def update(app: web.Application, handle: str) -> None:
-    updated_status = []
     async with lock:
         old_status, new_status = await asyncio.gather(
             db_retrieve_status(app, handle),
@@ -86,31 +85,29 @@ async def update(app: web.Application, handle: str) -> None:
         )
 
         status_dict = {s.id: s for s in old_status}
-        for submission in new_status:
-            if submission.id not in status_dict or status_dict[submission.id] != submission:
-                updated_status.append(submission)
+        updated_status = [s for s in new_status if s.id not in status_dict or status_dict[s.id] != s]
+
+        contest_ids = {s.author.contestId for s in updated_status}
+        # Get all contests simultaneously and cache them
+        await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
+
+        for submission in updated_status:
+            contest = await app["cf_client"].get_contest(submission.author.contestId)
+            if submission.should_notify(contest):
+                asyncio.create_task(
+                    make_tg_api_request(app, "sendMessage", params={
+                        "chat_id": CHAT_ID,
+                        "text": str(submission),
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": "true"
+                    })
+                )
 
         item = {
             "handle": handle,
             "status": [s.dict() for s in new_status]
         }
         await app["table"].put_item(Item=item)
-
-    contest_ids = {s.author.contestId for s in updated_status}
-    # Get all contests simultaneously and cache them
-    await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
-
-    for submission in updated_status:
-        contest = await app["cf_client"].get_contest(submission.author.contestId)
-        if submission.should_notify(contest):
-            asyncio.create_task(
-                make_tg_api_request(app, "sendMessage", params={
-                    "chat_id": CHAT_ID,
-                    "text": str(submission),
-                    "parse_mode": "HTML",
-                    "disable_web_page_preview": "true"
-                })
-            )
 
 
 async def get_handles(app: web.Application) -> list[str]:
@@ -125,7 +122,7 @@ async def update_status_forever(app: web.Application) -> None:
         for handle in await get_handles(app):
             try:
                 # At least 4s between each update
-                await asyncio.gather(update(app, handle), asyncio.sleep(4))
+                await asyncio.gather(update(app, handle), asyncio.sleep(3))
             except asyncio.CancelledError:
                 return
             except Exception as e:
