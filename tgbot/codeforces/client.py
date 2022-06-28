@@ -1,4 +1,5 @@
 import functools
+import logging
 from typing import Optional
 
 import requests
@@ -6,6 +7,8 @@ from cachetools import TTLCache, cached
 
 from .models import Contest, ContestPhase, Problem, Submission, User
 from .utils import CodeforcesError
+
+logger = logging.getLogger(__name__)
 
 
 class CodeforcesAPI:
@@ -19,7 +22,13 @@ class CodeforcesAPI:
         if "Codeforces is temporarily unavailable." in resp.text:
             raise CodeforcesError("Codeforces is temporarily unavailable.")
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except Exception as e:
+            logger.error("Could not read JSON from response")
+            logger.error(resp.text)
+            raise e from None
+
         if data["status"] == "FAILED":
             if "not found" in data["comment"].lower():
                 raise CodeforcesError("Not found")

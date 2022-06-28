@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional
 
 from aiocache import cached
@@ -5,6 +6,8 @@ from aiohttp import ClientSession
 
 from .models import Contest, ContestPhase, Submission, User
 from .utils import CodeforcesError
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncCodeforcesAPI:
@@ -25,7 +28,13 @@ class AsyncCodeforcesAPI:
         if "Codeforces is temporarily unavailable." in await resp.text():
             raise CodeforcesError("Codeforces is temporarily unavailable.")
 
-        data = await resp.json()
+        try:
+            data = await resp.json()
+        except Exception as e:
+            logger.error("Could not read JSON from response:")
+            logger.error(await resp.text())
+            raise e from None
+
         if data["status"] == "FAILED":
             if "not found" in data["comment"].lower():
                 raise CodeforcesError("Not found")

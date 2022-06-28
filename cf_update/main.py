@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import traceback
 from typing import Any
 
 import aioboto3
@@ -120,13 +121,15 @@ async def get_handles(app: web.Application) -> list[str]:
 
 
 async def update_status_forever(app: web.Application) -> None:
-    try:
-        while True:
-            for handle in await get_handles(app):
-                # At least 3s between each update
-                await asyncio.gather(update(app, handle), asyncio.sleep(3))
-    except asyncio.CancelledError:
-        pass
+    while True:
+        for handle in await get_handles(app):
+            try:
+                # At least 4s between each update
+                await asyncio.gather(update(app, handle), asyncio.sleep(4))
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logging.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
 
 
 async def startup(app: web.Application) -> None:

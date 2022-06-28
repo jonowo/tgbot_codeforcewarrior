@@ -1,6 +1,7 @@
 import json
 import logging
 import random
+import traceback
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
@@ -282,7 +283,6 @@ def hello():
         else:
             return ""
     except Exception as e:
-        import traceback
         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
         return ""
 
