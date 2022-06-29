@@ -33,6 +33,7 @@ task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-v
 
 load_dotenv()
 tgbot_token = os.environ["TOKEN"]
+SECRET = os.environ["SECRET"]
 tg_chat_id = -1001669733846
 
 app = flask.Flask(__name__)
@@ -233,6 +234,14 @@ class tgmsg_digester():
             contests = cf_client.get_contests()
             self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
+        elif cmd == "/delta":
+            if self.data["message"]["chat"]["id"] == tg_chat_id:
+                requests.post(
+                    "http://35.74.183.91/delta",
+                    headers={"X-Auth-Token": SECRET}
+                )
+            else:
+                self.text_response = "Please use this command inside the group."
 
     def new_member_join(self, user):
         if not user["is_bot"]:
@@ -288,7 +297,8 @@ def hello():
         return ""
 
 
-def main():
+@app.before_first_request
+def startup():
     resp = make_tg_api_request("setMyCommands", params={
         "commands": json.dumps([
             {"command": "help", "description": "See help message"},
@@ -296,13 +306,13 @@ def main():
             {"command": "stalk", "description": "Show codeforces profile"},
             {"command": "select", "description": "Get a problem"},
             {"command": "tags", "description": "List problem tags"},
-            {"command": "contests", "description": "See upcoming contests"}
+            {"command": "contests", "description": "See upcoming contests"},
+            {"command": "delta", "description": "Check rating changes"}
         ])
     })
     resp.raise_for_status()
-
-    app.run(host='127.0.0.1', port=8080, info=True)
+    logging.info(f"setMyCommands: {resp.text}")
 
 
 if __name__ == '__main__':
-    main()
+    app.run(host='127.0.0.1', port=8080, info=True)

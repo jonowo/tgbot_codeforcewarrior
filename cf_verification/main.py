@@ -12,7 +12,7 @@ from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
 from codeforces import CodeforcesAPI
-from codeforces.utils import HKT
+from codeforces.utils import hkt_now
 
 google.cloud.logging.Client().setup_logging()
 
@@ -67,7 +67,7 @@ def verify(handle: str, problem_id: str) -> bool:
     status = cf_client.get_status(handle, count=10)
     status = [s for s in status if s.problem.id == problem_id]
     return any(
-        datetime.now(HKT) - submission.time <= timedelta(seconds=10 * 60)
+        hkt_now() - submission.time <= timedelta(seconds=10 * 60)
         for submission in status
     )
 

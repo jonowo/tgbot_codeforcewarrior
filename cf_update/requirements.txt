@@ -5,3 +5,4 @@ cachetools
 aiohttp[speedups]
 aiocache
 aioboto3[s3cse]
+git+https://github.com/jazzband/prettytable#egg=prettytable

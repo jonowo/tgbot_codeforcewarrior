@@ -18,9 +18,14 @@ class CodeforcesAPI:
 
     def _request(self, endpoint, *args, **kwargs):
         resp = self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
+        content_type = resp.headers["Content-Type"]
 
         if "Codeforces is temporarily unavailable." in resp.text:
             raise CodeforcesError("Codeforces is temporarily unavailable.")
+        if "504 Gateway Time-out" in resp.text and "text/html" in content_type:
+            raise CodeforcesError("504 Gateway Timeout")
+        if "application/json" not in content_type:
+            raise CodeforcesError("Codeforces sent non-JSON response:\n{text}")
 
         try:
             data = resp.json()
@@ -66,9 +71,10 @@ class CodeforcesAPI:
         return functools.reduce(lambda t, p: t | set(p.tags), problems, set())
 
     @cached(cache=TTLCache(maxsize=1, ttl=5 * 60))
-    def get_contests(self) -> list[Contest]:
+    def get_contests(self, phases: tuple[ContestPhase] = (ContestPhase.BEFORE, ContestPhase.CODING)) -> list[Contest]:
         data = self._request("contest.list", params={"gym": "false"})
         contests = [Contest(**c) for c in data]
-        contests = [c for c in contests if c.phase in (ContestPhase.BEFORE, ContestPhase.CODING)]
+        if phases:
+            contests = [c for c in contests if c.phase in phases]
         contests.sort(key=lambda c: c.startTimeSeconds)
         return contests

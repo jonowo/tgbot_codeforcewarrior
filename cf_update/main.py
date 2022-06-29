@@ -8,8 +8,11 @@ from typing import Any
 import aioboto3
 from aiohttp import ClientSession, web
 from dotenv import load_dotenv
+from prettytable import PrettyTable
 
-from codeforces import AsyncCodeforcesAPI, Submission
+from codeforces import AsyncCodeforcesAPI, CodeforcesError, ContestPhase, Submission
+from codeforces.utils import hkt_now
+from predicted_deltas import get_predicted_deltas
 
 logging.basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -24,13 +27,13 @@ boto_session = aioboto3.Session()
 lock = asyncio.Lock()
 
 
-async def init_user(request: web.Request, handle: str) -> None:
-    status = await request.app["cf_client"].get_status(handle, count=100)
+async def init_user(app: web.Application, handle: str) -> None:
+    status = await app["cf_client"].get_status(handle, count=100)
     item = {
         "handle": handle,
         "status": [s.dict() for s in status]
     }
-    await request.app["table"].put_item(Item=item)
+    await app["table"].put_item(Item=item)
 
 
 @routes.post("/")
@@ -57,7 +60,7 @@ async def init(request: web.Request) -> web.Response:
                 )
 
         # Initialize new handles
-        tasks += [init_user(request, handle) for handle in handles]
+        tasks += [init_user(request.app, handle) for handle in handles]
         await asyncio.gather(*tasks)
 
     return web.json_response({"success": True})
@@ -68,6 +71,67 @@ async def make_tg_api_request(app: web.Application, endpoint: str, params: dict[
         f"https://api.telegram.org/bot{TOKEN}/{endpoint}",
         params=params
     )
+
+
+async def get_handles(app: web.Application) -> list[str]:
+    async with lock:
+        response = await app["table"].scan()
+        handles = [item["handle"] for item in response["Items"]]
+    return handles
+
+
+@routes.post("/delta")
+async def send_delta(request: web.Request) -> web.Response:
+    if request.headers.get("X-Auth-Token") != SECRET:
+        logger.warning("Endpoint /delta was accessed without authentication")
+        return web.json_response({"success": False, "reason": "Authentication failed"})
+
+    handles = await get_handles(request.app)
+
+    # Get most recent contest
+    contests = await request.app["cf_client"].get_contests(phases=())
+    contests = [c for c in contests if c.phase != ContestPhase.BEFORE]
+    contests.sort(key=lambda c: c.startTimeSeconds, reverse=True)
+    contest = contests[0]
+
+    predict = True
+    if hkt_now() > contest.end_time:
+        # Try to get actual rating changes
+        try:
+            rating_changes = await request.app["cf_client"].get_rating_changes(contest.id)
+        except CodeforcesError as e:
+            if "Rating changes are unavailable" not in str(e):
+                raise e from None
+        else:
+            predict = False
+
+    table = PrettyTable(["#", "Handle", "∆"], sortby="#", align="r")
+    table.align["Handle"] = "l"
+    table.header_align = "c"
+
+    if predict:
+        rating_changes = await get_predicted_deltas(request.app, contest.id)
+        for h in handles:
+            if h in rating_changes:
+                table.add_row(rating_changes[h])
+    else:
+        for h in handles:
+            if h in rating_changes:
+                table.add_row((rating_changes[h].rank, h, rating_changes[h].delta))
+
+    asyncio.create_task(
+        make_tg_api_request(request.app, "sendMessage", params={
+            "chat_id": CHAT_ID,
+            "text": (
+                f"{'Predicted' if predict else 'Official'} rating changes for {contest.linked_name}\n"
+                f"<pre>{table}</pre>"
+            ),
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true"
+        })
+    )
+
+    return web.json_response({"success": True})
 
 
 async def db_retrieve_status(app: web.Application, handle: str) -> list[Submission]:
@@ -110,18 +174,11 @@ async def update(app: web.Application, handle: str) -> None:
         await app["table"].put_item(Item=item)
 
 
-async def get_handles(app: web.Application) -> list[str]:
-    async with lock:
-        response = await app["table"].scan()
-        handles = [item["handle"] for item in response["Items"]]
-    return handles
-
-
 async def update_status_forever(app: web.Application) -> None:
     while True:
         for handle in await get_handles(app):
             try:
-                # At least 4s between each update
+                # At least 3s between each update
                 await asyncio.gather(update(app, handle), asyncio.sleep(3))
             except asyncio.CancelledError:
                 return

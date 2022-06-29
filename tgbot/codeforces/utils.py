@@ -34,6 +34,10 @@ def duration(td: timedelta) -> str:
     return " ".join(res[:2])
 
 
+def hkt_now() -> datetime:
+    return datetime.now(HKT)
+
+
 def utc_timestamp_to_hkt(timestamp: int) -> datetime:
     dt = datetime.utcfromtimestamp(timestamp)
     return dt.replace(tzinfo=timezone.utc).astimezone(HKT)

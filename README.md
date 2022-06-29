@@ -42,5 +42,4 @@ python main.py
 ## Roadmap
 - Consider rating (and solved problems?) in /select
 - clist.by integration (non-cf contest notification)
-- Delta prediction
 - Help eep spend more money

@@ -5,7 +5,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from .utils import HKT, duration, utc_timestamp_to_hkt
+from .utils import duration, hkt_now, utc_timestamp_to_hkt
 
 
 class User(BaseModel):
@@ -112,14 +112,18 @@ class Contest(BaseModel):
     def url(self) -> str:
         return f"https://codeforces.com/contests/{self.id}"
 
+    @property
+    def linked_name(self) -> str:
+        return f"<a href='{self.url}'>{self.name}</a>"
+
     def __str__(self) -> str:
         text = self.start_time.strftime("%b {} (%a) %H:%M").format(
             self.start_time.day)
         text += self.end_time.strftime(" - %H:%M\n")
 
-        text += f"<a href='{self.url}'>{self.name}</a>\n"
+        text += f"{self.linked_name}\n"
 
-        now = datetime.now(HKT)
+        now = hkt_now()
         if now < self.start_time:
             text += f"Starts in {duration(self.start_time - now)}"
         else:
@@ -188,3 +192,25 @@ class Submission(BaseModel):
             text += f"FSTed on {self.problem.linked_name}"
 
         return text
+
+
+# class RanklistRow(BaseModel):
+#     party: Party
+#     rank: int
+
+
+class RatingChange(BaseModel):
+    contestId: int
+    contestName: str
+    handle: str
+    rank: int
+    ratingUpdateTimeSeconds: int
+    oldRating: int
+    newRating: int
+
+    @property
+    def delta(self) -> str:
+        change = str(self.newRating - self.oldRating)
+        if not change.startswith("-"):
+            change = f"+{change}"
+        return change
