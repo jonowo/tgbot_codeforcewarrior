@@ -1,13 +1,26 @@
 # tgbot_codeforcewarrior
 
 ## Installation
-Write more later
-
-Windows:
-```cmd
-mklink /J .\cf_verification\codeforces .\tgbot\codeforces
-mklink /J .\cf_update\codeforces .\tgbot\codeforces
+Create `tgbot/.env` with the following format:
 ```
+TOKEN=tg_bot_token_here
+SECRET=secret_here
+```
+
+You can generate `SECRET` using
+```bash
+python -c "import secrets; print(secrets.token_hex(10))"
+```
+
+Using Windows cmd, create hard links and directory junctions:
+```cmd
+mklink /h .\cf_verification\.env .\tgbot\.env
+mklink /h .\decline_join_request\.env .\tgbot\.env
+mklink /h .\cf_update\.env .\tgbot\.env
+mklink /j .\cf_verification\codeforces .\tgbot\codeforces
+mklink /j .\cf_update\codeforces .\tgbot\codeforces
+```
+
 or equivalent on other OS.
 
 ### tgbot
