@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import os
 import random
 import traceback
@@ -79,8 +80,12 @@ def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
 
     if filtered_problems := list(filtered_problems):
         return random.choice(filtered_problems)
-    else:
-        return None
+
+
+def get_handle(user_id: int) -> Optional[str]:
+    doc = db.collection("cfbot_handle").document(str(user_id)).get()
+    if doc.exists:
+        return doc.to_dict()["handle"]
 
 
 class tgmsg_digester():
@@ -120,7 +125,9 @@ class tgmsg_digester():
             self.text_response = (
                 "Commands:\n"
                 "    /help - Hi\n"
-                "    /tags - Available tags\n"
+                "    /sign_on - Confirm your identity as a codeforces user\n"
+                "    /stalk - Show codeforces profile\n"
+                "    /tags - Show available tags\n"
                 "    /select - Random codeforces problem\n"
                 "        Parameters:\n"
                 "            tags: csv form of tags\n"
@@ -129,8 +136,7 @@ class tgmsg_digester():
                 "            /select rating=1800-2000\n"
                 "            /select tags=math,dp\n"
                 "            /select tags=fft|rating=2400\n"
-                "    /sign_on - Confirm your identity as a codeforces user\n"
-                "    /stalk - Show codeforces profile\n\n"
+                "    /delta - Check predicted/official rating changes\n\n"
                 "If you are willing to contribute, please submit a PR "
                 "<a href='https://github.com/eepnt/tgbot_codeforcewarrior'>here</a>."
             )
@@ -146,6 +152,7 @@ class tgmsg_digester():
         elif cmd == "/select":
             tags = set()
             rating = None
+            r_suggested = False
             try:
                 splits = [s.strip() for s in content.split('|') if s and not s.isspace()]
                 for entry in splits:
@@ -164,10 +171,23 @@ class tgmsg_digester():
             except (ValueError, AssertionError):
                 self.text_response = "Your query is invalid"
             else:
-                if problem := select(tags, rating):
+                if not rating and (handle := get_handle(user["id"])):
+                    r_suggested = True
+                    cf_user = cf_client.get_user(handle)
+                    if cf_user.rating:
+                        r_min = max(math.ceil(cf_user.rating / 100) * 100, 800)
+                    else:
+                        r_min = 800
+                    rating = [r_min, r_min + 200]
+
+                problem = select(tags, rating)
+                if not problem and r_suggested:
+                    problem = select(tags, rating := None)
+
+                if problem:
                     self.text_response = str(problem)
                 else:
-                    self.text_response = "no problem match search criteria {} {}".format(tags, rating)
+                    self.text_response = f"no problem match search criteria {tags} {rating}"
         elif cmd in ("/sign_on", "/signon", "/sign_in", "/signin"):
             if user is None:
                 logging.error("unexpected response")
@@ -197,7 +217,7 @@ class tgmsg_digester():
                         else:
                             self.text_response = (
                                 "已有成員已登記此 handle\n"
-                                "如果你確實持有這 codeforces 帳號，請聯絡 @jonowowo"
+                                "如果你確實持有這 codeforces 帳號，請聯絡 @jowonowo"
                             )
                         return
 
@@ -223,9 +243,7 @@ class tgmsg_digester():
                 user_id = self.data["message"]["reply_to_message"]["from"]["id"]
             else:
                 user_id = user["id"]
-            doc = db.collection("cfbot_handle").document(str(user_id)).get()
-            if doc.exists:
-                handle = doc.to_dict()["handle"]
+            if handle := get_handle(user_id):
                 cf_user = cf_client.get_user(handle)
                 self.text_response = str(cf_user)
             else:
@@ -249,8 +267,7 @@ class tgmsg_digester():
 
     def chat_join_request(self, chat_join_request):
         user_id = chat_join_request["from"]["id"]
-        doc = db.collection("cfbot_handle").document(str(user_id)).get()
-        if doc.exists:
+        if get_handle(user_id):
             self.response = {
                 "method": "approveChatJoinRequest",
                 "chat_id": tg_chat_id,
@@ -290,11 +307,9 @@ def hello():
         logging.info(response)
         if response:
             return flask.jsonify(response)
-        else:
-            return ""
     except Exception as e:
         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-        return ""
+    return ""
 
 
 @app.before_first_request
