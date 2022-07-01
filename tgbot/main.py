@@ -150,7 +150,7 @@ class tgmsg_digester():
                 "sticker": "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
             }
         elif cmd == "/tags":
-            self.text_response = ", ".join(cf_client.get_available_tags())
+            self.text_response = "Tags: " + ", ".join(cf_client.get_available_tags())
         elif cmd == "/select":
             tags = set()
             rating = None

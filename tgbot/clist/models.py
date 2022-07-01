@@ -28,7 +28,7 @@ class ContestInfo(BaseModel):
 
     def __str__(self) -> str:
         text = self.start_time.strftime("%b {} (%a) %H:%M").format(self.start_time.day)
-        text += self.end_time.strftime(" - %H:%M\n")
+        text += self.end_time.strftime(" - %H:%M HKT\n")
 
         text += f"{RESOURCES[self.resource]}: {self.linked_name}\n"
 
