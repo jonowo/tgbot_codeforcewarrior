@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
+from clist import ClistAPI
 from codeforces import CodeforcesAPI, CodeforcesError, Problem
 
 google.cloud.logging.Client().setup_logging()
@@ -39,6 +40,7 @@ tg_chat_id = -1001669733846
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
+clist_client = ClistAPI(os.environ["CLIST_API_KEY"])
 
 
 def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
@@ -249,7 +251,7 @@ class tgmsg_digester():
             else:
                 self.text_response = "Not yet use /sign_on"
         elif cmd == "/contests":
-            contests = cf_client.get_contests()
+            contests = clist_client.get_upcoming_contests()
             self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
         elif cmd == "/delta":

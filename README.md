@@ -53,5 +53,5 @@ python main.py
 ```
 
 ## Roadmap
-- clist.by integration (non-cf contest notification)
+- Contest notification
 - Help eep spend more money

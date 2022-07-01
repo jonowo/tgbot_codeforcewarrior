@@ -117,8 +117,7 @@ class Contest(BaseModel):
         return f"<a href='{self.url}'>{self.name}</a>"
 
     def __str__(self) -> str:
-        text = self.start_time.strftime("%b {} (%a) %H:%M").format(
-            self.start_time.day)
+        text = self.start_time.strftime("%b {} (%a) %H:%M").format(self.start_time.day)
         text += self.end_time.strftime(" - %H:%M\n")
 
         text += f"{self.linked_name}\n"
