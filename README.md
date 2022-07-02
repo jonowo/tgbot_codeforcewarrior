@@ -19,6 +19,7 @@ mklink /h .\decline_join_request\.env .\tgbot\.env
 mklink /h .\cf_update\.env .\tgbot\.env
 mklink /j .\cf_verification\codeforces .\tgbot\codeforces
 mklink /j .\cf_update\codeforces .\tgbot\codeforces
+mklink /j .\cf_update\clist .\tgbot\clist
 ```
 
 or equivalent on other OS.
@@ -40,18 +41,8 @@ gcloud functions deploy decline_join_request --trigger-http --allow-unauthentica
 
 ### cf_update
 Deploy on an AWS EC2 instance with an Elastic IP and nginx configured.
-<br>
-Create a DynamoDB table `cf-status` with string `handle` as partition key.
-<br>
-Create an AWS IAM user and grant DynamoDB edit rights.
 
 ```bash
-pip install awscli
-aws configure
 pip install -r requirements.txt
 python main.py
 ```
-
-## Roadmap
-- Contest notification
-- Help eep spend more money

@@ -4,5 +4,8 @@ pydantic
 cachetools
 aiohttp[speedups]
 aiocache
-aioboto3[s3cse]
 git+https://github.com/jazzband/prettytable#egg=prettytable
+aiocron
+aiotinydb
+tinydb==3.12.1
+ujson

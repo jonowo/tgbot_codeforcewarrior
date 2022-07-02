@@ -24,7 +24,6 @@ class AsyncCodeforcesAPI:
 
     async def _request(self, endpoint, *args, **kwargs) -> Any:
         resp = await self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
-
         text = await resp.text()
 
         if "Codeforces is temporarily unavailable." in text:

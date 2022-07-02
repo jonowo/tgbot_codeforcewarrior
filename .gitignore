@@ -2,5 +2,8 @@
 **/__pycache__/
 **/.gcloudignore
 **/.env
+cf_update/db.json
 **/codeforces/
 !tgbot/codeforces/
+**/clist/
+!tgbot/clist/
