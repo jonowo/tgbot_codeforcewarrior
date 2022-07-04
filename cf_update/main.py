@@ -25,6 +25,7 @@ with open("config.json") as f:
 
 routes = web.RouteTableDef()
 lock = asyncio.Lock()
+delta_lock = asyncio.Lock()
 
 
 async def get_handles(app: web.Application) -> list[str]:
@@ -72,17 +73,19 @@ async def make_tg_api_request(app: web.Application, endpoint: str, params: dict[
     )
 
 
-@routes.post("/delta")
-async def send_delta(request: web.Request) -> web.Response:
-    if request.headers.get("X-Auth-Token") != config["SECRET"]:
-        logger.warning("Endpoint /delta was accessed without authentication")
-        return web.json_response({"success": False, "reason": "Authentication failed"})
+async def send_delta(app: web.Application, chat_id: int) -> None:
+    asyncio.create_task(
+        make_tg_api_request(app, "sendChatAction", params={
+            "chat_id": chat_id,
+            "action": "typing"
+        })
+    )
 
     async with lock:
-        handles = await get_handles(request.app)
+        handles = await get_handles(app)
 
     # Get most recent contest
-    contests = await request.app["cf_client"].get_contests(phases=())
+    contests = await app["cf_client"].get_contests(phases=())
     contests = [c for c in contests if c.phase != ContestPhase.BEFORE]
     contests.sort(key=lambda c: c.startTimeSeconds, reverse=True)
     contest = contests[0]
@@ -91,10 +94,13 @@ async def send_delta(request: web.Request) -> web.Response:
     if hkt_now() > contest.end_time:
         # Try to get actual rating changes
         try:
-            rating_changes = await request.app["cf_client"].get_rating_changes(contest.id)
+            rating_changes = await app["cf_client"].get_rating_changes(contest.id)
+            assert rating_changes
         except CodeforcesError as e:
             if "Rating changes are unavailable" not in str(e):
                 raise e from None
+        except AssertionError:
+            pass
         else:
             predict = False
 
@@ -103,7 +109,8 @@ async def send_delta(request: web.Request) -> web.Response:
     table.header_align = "c"
 
     if predict:
-        rating_changes = await get_predicted_deltas(request.app, contest.id)
+        async with delta_lock:
+            rating_changes = await get_predicted_deltas(app, contest.id)
         for h in handles:
             if h in rating_changes:
                 table.add_row(rating_changes[h])
@@ -113,8 +120,8 @@ async def send_delta(request: web.Request) -> web.Response:
                 table.add_row((rating_changes[h].rank, h, rating_changes[h].delta))
 
     asyncio.create_task(
-        make_tg_api_request(request.app, "sendMessage", params={
-            "chat_id": config["CHAT_ID"],
+        make_tg_api_request(app, "sendMessage", params={
+            "chat_id": chat_id,
             "text": (
                 f"{'Predicted' if predict else 'Official'} rating changes for {contest.linked_name}\n"
                 f"<pre>{table}</pre>"
@@ -124,6 +131,15 @@ async def send_delta(request: web.Request) -> web.Response:
         })
     )
 
+
+@routes.post("/delta")
+async def command_delta(request: web.Request) -> web.Response:
+    if request.headers.get("X-Auth-Token") != config["SECRET"]:
+        logger.warning("Endpoint /delta was accessed without authentication")
+        return web.json_response({"success": False, "reason": "Authentication failed"})
+
+    data = await request.json()
+    asyncio.create_task(send_delta(request.app, data["chat_id"]))
     return web.json_response({"success": True})
 
 

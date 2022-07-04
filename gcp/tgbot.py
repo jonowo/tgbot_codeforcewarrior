@@ -199,10 +199,13 @@ class TGMessageDigester:
             self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
         elif cmd == "/delta":
-            if self.data["message"]["chat"]["id"] == config["CHAT_ID"]:
+            chat_id = self.data["message"]["chat"]["id"]
+            if chat_id == config["CHAT_ID"] or get_handle(user["id"]):
                 session.post(
                     f"{config['CF_UPDATE_URL']}/delta",
-                    headers={"X-Auth-Token": config["SECRET"]}
+                    json={"chat_id": chat_id},
+                    headers={"X-Auth-Token": config["SECRET"]},
+                    timeout=5
                 )
             else:
                 self.text_response = "Please use this command inside the group."

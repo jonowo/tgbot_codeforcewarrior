@@ -29,7 +29,10 @@ class Parser(HTMLParser):
         if tag == "td" and self.parsing:
             self.row.append(self.content.strip())
         elif tag == "tr" and self.parsing:
-            self.data[self.row[1]] = (int(self.row[0]), self.row[1], int(self.row[2]))
+            change = self.row[2]
+            if not change.startswith("-"):
+                change = f"+{change}"
+            self.data[self.row[1]] = (int(self.row[0]), self.row[1], change)
         elif tag == "tbody":
             self.parsing = False
 

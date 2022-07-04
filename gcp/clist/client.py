@@ -16,7 +16,7 @@ class ClistAPI:
         self.session.headers = {"Authorization": f"ApiKey {api_key}"}
 
     def _request(self, endpoint, *args, **kwargs):
-        resp = self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
+        resp = self.session.get(f"{self.base_url}/{endpoint}", *args, timeout=5, **kwargs)
 
         if "application/json" not in resp.headers["Content-Type"]:
             raise ClistError("Clist sent non-JSON response:\n{text}")

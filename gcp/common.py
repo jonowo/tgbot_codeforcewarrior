@@ -34,7 +34,8 @@ session = requests.Session()
 def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
     return session.get(
         f"https://api.telegram.org/bot{config['TOKEN']}/{endpoint}",
-        params=params
+        params=params,
+        timeout=5
     )
 
 

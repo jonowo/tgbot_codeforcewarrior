@@ -17,7 +17,7 @@ class CodeforcesAPI:
         self.session = requests.Session()
 
     def _request(self, endpoint, *args, **kwargs):
-        resp = self.session.get(f"{self.base_url}/{endpoint}", *args, **kwargs)
+        resp = self.session.get(f"{self.base_url}/{endpoint}", *args, timeout=10, **kwargs)
         content_type = resp.headers["Content-Type"]
 
         if "Codeforces is temporarily unavailable." in resp.text:
