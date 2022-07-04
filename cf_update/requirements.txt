@@ -1,4 +1,3 @@
-python-dotenv
 requests
 pydantic
 cachetools

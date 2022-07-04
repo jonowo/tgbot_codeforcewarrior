@@ -1,66 +1,14 @@
-import json
-import os
 from datetime import datetime, timedelta
-from typing import Any
 
 import functions_framework
-import google.cloud.logging
 import requests
-from dotenv import load_dotenv
 from flask import Request
-from google.cloud import firestore, tasks_v2
-from google.protobuf import timestamp_pb2
 
 from codeforces import CodeforcesAPI
 from codeforces.utils import hkt_now
-
-google.cloud.logging.Client().setup_logging()
-
-try:
-    import googleclouddebugger
-
-    googleclouddebugger.enable(breakpoint_enable_canary=False)
-except ImportError:
-    pass
-
-# load firestore
-db = firestore.Client(project='tgbot-340618')
-
-# load cloud task config
-task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
-
-load_dotenv()
-tgbot_token = os.environ["TOKEN"]
-SECRET = os.environ["SECRET"]
-tg_chat_id = -1001669733846
+from common import config, db, make_tg_api_request, schedule_task
 
 cf_client = CodeforcesAPI()
-
-
-def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
-    return requests.get(
-        f"https://api.telegram.org/bot{tgbot_token}/{endpoint}",
-        params=params
-    )
-
-
-def schedule_task(endpoint: str, user_id: int, dt: datetime) -> None:
-    data = {"user_id": user_id}
-
-    timestamp = timestamp_pb2.Timestamp()
-    timestamp.FromDatetime(dt)
-
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"https://asia-northeast1-tgbot-340618.cloudfunctions.net/{endpoint}",
-            "headers": {"Content-type": "application/json"},
-            "body": json.dumps(data).encode("utf-8")
-        },
-        "schedule_time": timestamp
-    }
-    task_client.create_task(parent=task_parent, task=task)
 
 
 def verify(handle: str, problem_id: str) -> bool:
@@ -109,7 +57,7 @@ def cf_verification(request: Request) -> str:
         make_tg_api_request(
             "approveChatJoinRequest",
             params={
-                "chat_id": tg_chat_id,
+                "chat_id": config["CHAT_ID"],
                 "user_id": user_id
             }
         )
@@ -120,9 +68,9 @@ def cf_verification(request: Request) -> str:
 
         # Notify cf_update
         requests.post(
-            "http://35.74.183.91/",
+            f"{config['CF_UPDATE_URL']}/",
             json={"handles": handles},
-            headers={"X-Auth-Token": SECRET}
+            headers={"X-Auth-Token": config["SECRET"]}
         )
 
         return "verification successful"
@@ -144,3 +92,19 @@ def cf_verification(request: Request) -> str:
     )
 
     return "verification failed"
+
+
+@functions_framework.http
+def decline_join_request(request: Request) -> str:
+    user_id = request.get_json()["user_id"]
+
+    # Will fail (with no effect) if the user never requested to join / is already inside group
+    make_tg_api_request(
+        "declineChatJoinRequest",
+        params={
+            "chat_id": config["CHAT_ID"],
+            "user_id": user_id
+        }
+    )
+
+    return ""

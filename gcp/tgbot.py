@@ -1,71 +1,20 @@
 import json
 import logging
 import math
-import os
 import random
 import traceback
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import flask
-import google.cloud.logging
-import requests
-from dotenv import load_dotenv
-from google.cloud import firestore, tasks_v2
-from google.protobuf import timestamp_pb2
 
 from clist import ClistAPI
 from codeforces import CodeforcesAPI, CodeforcesError, Problem
-
-google.cloud.logging.Client().setup_logging()
-
-try:
-    import googleclouddebugger
-
-    googleclouddebugger.enable(breakpoint_enable_canary=False)
-except ImportError:
-    pass
-
-# load firestore
-db = firestore.Client(project='tgbot-340618')
-
-# load cloud task config
-task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
-
-load_dotenv()
-tgbot_token = os.environ["TOKEN"]
-SECRET = os.environ["SECRET"]
-tg_chat_id = -1001669733846
+from common import config, db, get_handle, make_tg_api_request, schedule_task, session
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
-clist_client = ClistAPI(os.environ["CLIST_API_KEY"])
-
-
-def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
-    return requests.get(
-        f"https://api.telegram.org/bot{tgbot_token}/{endpoint}",
-        params=params
-    )
-
-
-def schedule_task(endpoint: str, user_id: int, dt: datetime):
-    data = {"user_id": user_id}
-
-    timestamp = timestamp_pb2.Timestamp()
-    timestamp.FromDatetime(dt)
-
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": f"https://asia-northeast1-tgbot-340618.cloudfunctions.net/{endpoint}",
-            "headers": {"Content-type": "application/json"},
-            "body": json.dumps(data).encode("utf-8")
-        },
-        "schedule_time": timestamp
-    }
-    task_client.create_task(parent=task_parent, task=task)
+clist_client = ClistAPI(config["CLIST_API_KEY"])
 
 
 def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
@@ -84,13 +33,7 @@ def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
         return random.choice(filtered_problems)
 
 
-def get_handle(user_id: int) -> Optional[str]:
-    doc = db.collection("cfbot_handle").document(str(user_id)).get()
-    if doc.exists:
-        return doc.to_dict()["handle"]
-
-
-class tgmsg_digester():
+class TGMessageDigester:
     def __init__(self, data):
         self.data = data
         self.response: Optional[dict[str, Any]] = None  # response objects for other endpoints
@@ -129,7 +72,6 @@ class tgmsg_digester():
                 "    /help - Hi\n"
                 "    /sign_on - Confirm your identity as a codeforces user\n"
                 "    /stalk - Show codeforces profile\n"
-                "    /tags - Show available tags\n"
                 "    /select - Random codeforces problem\n"
                 "        Parameters:\n"
                 "            tags: csv form of tags\n"
@@ -138,6 +80,8 @@ class tgmsg_digester():
                 "            /select rating=1800-2000\n"
                 "            /select tags=math,dp\n"
                 "            /select tags=fft|rating=2400\n"
+                "    /tags - Show available tags\n"
+                "    /contests - Show upcoming contests\n"
                 "    /delta - Check predicted/official rating changes\n\n"
                 "If you are willing to contribute, please submit a PR "
                 "<a href='https://github.com/eepnt/tgbot_codeforcewarrior'>here</a>."
@@ -255,10 +199,10 @@ class tgmsg_digester():
             self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
         elif cmd == "/delta":
-            if self.data["message"]["chat"]["id"] == tg_chat_id:
-                requests.post(
-                    "http://35.74.183.91/delta",
-                    headers={"X-Auth-Token": SECRET}
+            if self.data["message"]["chat"]["id"] == config["CHAT_ID"]:
+                session.post(
+                    f"{config['CF_UPDATE_URL']}/delta",
+                    headers={"X-Auth-Token": config["SECRET"]}
                 )
             else:
                 self.text_response = "Please use this command inside the group."
@@ -272,7 +216,7 @@ class tgmsg_digester():
         if get_handle(user_id):
             self.response = {
                 "method": "approveChatJoinRequest",
-                "chat_id": tg_chat_id,
+                "chat_id": config["CHAT_ID"],
                 "user_id": user_id
             }
         else:
@@ -305,7 +249,7 @@ def hello():
     try:
         data = flask.request.get_json()
         logging.info(data)
-        response = tgmsg_digester(data).response_output()
+        response = TGMessageDigester(data).response_output()
         logging.info(response)
         if response:
             return flask.jsonify(response)
@@ -329,7 +273,3 @@ def startup():
     })
     resp.raise_for_status()
     logging.info(f"setMyCommands: {resp.text}")
-
-
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8080, info=True)

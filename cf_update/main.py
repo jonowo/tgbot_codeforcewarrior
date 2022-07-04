@@ -1,7 +1,7 @@
 import asyncio
 import contextlib
+import json
 import logging
-import os
 import traceback
 from datetime import timedelta
 from typing import Any
@@ -9,7 +9,6 @@ from typing import Any
 import aiocron
 from aiohttp import ClientSession, web
 from aiotinydb import AIOTinyDB
-from dotenv import load_dotenv
 from prettytable import PrettyTable
 from tinydb import Query
 
@@ -21,10 +20,8 @@ from predicted_deltas import get_predicted_deltas
 logging.basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-TOKEN = os.environ["TOKEN"]
-SECRET = os.environ["SECRET"]
-CHAT_ID = -1001669733846
+with open("config.json") as f:
+    config = json.load(f)
 
 routes = web.RouteTableDef()
 lock = asyncio.Lock()
@@ -46,7 +43,7 @@ async def init_user(app: web.Application, handle: str) -> None:
 
 @routes.post("/")
 async def init(request: web.Request) -> web.Response:
-    if request.headers.get("X-Auth-Token") != SECRET:
+    if request.headers.get("X-Auth-Token") != config["SECRET"]:
         logger.warning("Endpoint / was accessed without authentication")
         return web.json_response({"success": False, "reason": "Authentication failed"})
 
@@ -70,14 +67,14 @@ async def init(request: web.Request) -> web.Response:
 
 async def make_tg_api_request(app: web.Application, endpoint: str, params: dict[str, Any]) -> None:
     await app["session"].post(
-        f"https://api.telegram.org/bot{TOKEN}/{endpoint}",
+        f"https://api.telegram.org/bot{config['TOKEN']}/{endpoint}",
         params=params
     )
 
 
 @routes.post("/delta")
 async def send_delta(request: web.Request) -> web.Response:
-    if request.headers.get("X-Auth-Token") != SECRET:
+    if request.headers.get("X-Auth-Token") != config["SECRET"]:
         logger.warning("Endpoint /delta was accessed without authentication")
         return web.json_response({"success": False, "reason": "Authentication failed"})
 
@@ -117,7 +114,7 @@ async def send_delta(request: web.Request) -> web.Response:
 
     asyncio.create_task(
         make_tg_api_request(request.app, "sendMessage", params={
-            "chat_id": CHAT_ID,
+            "chat_id": config["CHAT_ID"],
             "text": (
                 f"{'Predicted' if predict else 'Official'} rating changes for {contest.linked_name}\n"
                 f"<pre>{table}</pre>"
@@ -156,7 +153,7 @@ async def update_status(app: web.Application, handle: str) -> None:
             if submission.should_notify(contest):
                 asyncio.create_task(
                     make_tg_api_request(app, "sendMessage", params={
-                        "chat_id": CHAT_ID,
+                        "chat_id": config["CHAT_ID"],
                         "text": str(submission),
                         "parse_mode": "HTML",
                         "disable_web_page_preview": "true"
@@ -200,7 +197,7 @@ async def notify_upcoming_contest(app: web.Application) -> None:
         text = f"{contest.linked_name} begins in {minutes_left} minutes"
         asyncio.create_task(
             make_tg_api_request(app, "sendMessage", params={
-                "chat_id": CHAT_ID,
+                "chat_id": config["CHAT_ID"],
                 "text": text,
                 "parse_mode": "HTML",
                 "disable_web_page_preview": "true"
@@ -214,7 +211,7 @@ async def startup(app: web.Application) -> None:
 
     app["cf_client"] = await context_stack.enter_async_context(AsyncCodeforcesAPI())
     app["clist_client"] = await context_stack.enter_async_context(
-        AsyncClistAPI(os.environ["CLIST_API_KEY"])
+        AsyncClistAPI(config["CLIST_API_KEY"])
     )
 
     # aiohttp session
