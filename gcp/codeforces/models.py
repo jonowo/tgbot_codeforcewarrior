@@ -15,6 +15,12 @@ class User(BaseModel):
     maxRating: Optional[int] = None
     maxRank: Optional[str] = None
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.rank:
+            self.rank = capwords(self.rank)
+            self.maxRank = capwords(self.maxRank)
+
     @property
     def url(self):
         return f"https://codeforces.com/profile/{self.handle}"
@@ -26,8 +32,8 @@ class User(BaseModel):
     def __str__(self) -> str:
         text = f"Handle: {self.linked_name}\n"
         if self.rating:
-            text += f"Rating: {self.rating}, {capwords(self.rank)}\n"
-            text += f"Peak rating: {self.maxRating}, {capwords(self.maxRank)}"
+            text += f"Rating: {self.rating}, {self.rank}\n"
+            text += f"Peak rating: {self.maxRating}, {self.maxRank}"
         else:
             text += "Unrated"
         return text
@@ -149,10 +155,6 @@ class Submission(BaseModel):
     def time(self) -> datetime:
         return utc_timestamp_to_hkt(self.creationTimeSeconds)
 
-    # @property
-    # def url(self) -> str:
-    #     return f"https://codeforces.com/contest/{self.contestId}/submission/{self.id}"
-
     def get_author(self) -> Optional[User]:
         if self.author.not_team():
             return self.author.members[0]
@@ -193,11 +195,6 @@ class Submission(BaseModel):
         return text
 
 
-# class RanklistRow(BaseModel):
-#     party: Party
-#     rank: int
-
-
 class RatingChange(BaseModel):
     contestId: int
     contestName: str
@@ -213,3 +210,6 @@ class RatingChange(BaseModel):
         if not change.startswith("-"):
             change = f"+{change}"
         return change
+
+    def get_table_row(self) -> tuple[int, str, str]:
+        return self.rank, self.handle, self.delta

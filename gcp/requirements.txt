@@ -14,3 +14,4 @@ pydantic
 cachetools
 aiohttp[speedups]
 aiocache
+git+https://github.com/jazzband/prettytable#egg=prettytable
