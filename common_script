@@ -1,5 +1,0 @@
-cf_verification:
-  - gcloud functions deploy cf_verification --trigger-http --allow-unauthenticated --region asia-northeast1 --memory 256MB --runtime python39
-
-tgbot:
-  - gcloud app deploy

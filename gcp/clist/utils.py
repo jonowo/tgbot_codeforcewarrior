@@ -3,6 +3,19 @@ from zoneinfo import ZoneInfo
 
 HKT = ZoneInfo("Asia/Hong_Kong")
 
+RESOURCES = {
+    "codeforces.com": "Codeforces",
+    "leetcode.com": "LeetCode",
+    "codingcompetitions.withgoogle.com": "Google",
+    "facebook.com/hackercup": "Meta",
+    "stats.ioinformatics.org": "IOI",
+    "icpc.global": "ICPC"
+}
+
+
+class ClistError(Exception):
+    pass
+
 
 def plural(unit: int) -> str:
     return "" if unit == 1 else "s"
@@ -28,6 +41,10 @@ def duration(td: timedelta) -> str:
         res.append(f"{seconds} second{plural(seconds)}")
 
     return " ".join(res[:2])
+
+
+def hkt_now() -> datetime:
+    return datetime.now(HKT)
 
 
 def utc_timestamp_to_hkt(timestamp: int) -> datetime:

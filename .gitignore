@@ -1,6 +1,10 @@
 .idea/
 **/__pycache__/
-**/.gcloudignore
-**/.credentials
+gcp/.gcloudignore
+**/config.json
+cf_update/db.json
+
 **/codeforces/
-!tgbot/codeforces/
+!gcp/codeforces/
+**/clist/
+!gcp/clist/

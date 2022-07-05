@@ -1,0 +1,10 @@
+requests
+pydantic
+cachetools
+aiohttp[speedups]
+aiocache
+git+https://github.com/jazzband/prettytable#egg=prettytable
+aiocron
+aiotinydb
+tinydb==3.12.1
+ujson

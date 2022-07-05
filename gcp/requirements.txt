@@ -1,0 +1,16 @@
+# Google cloud platform
+google-python-cloud-debugger
+google-cloud-logging
+google-cloud-tasks==2.7.1
+google-cloud-firestore
+
+# Google cloud functions
+functions-framework==3.*
+Flask==2.0.2
+
+gunicorn
+requests
+pydantic
+cachetools
+aiohttp[speedups]
+aiocache

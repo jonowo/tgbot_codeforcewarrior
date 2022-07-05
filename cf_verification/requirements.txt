@@ -1,8 +1,0 @@
-functions-framework==3.*
-google-cloud-logging
-google-cloud-firestore
-google-cloud-tasks==2.7.1
-google-python-cloud-debugger
-requests
-pydantic
-cachetools

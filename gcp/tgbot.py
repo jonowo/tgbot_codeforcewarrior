@@ -1,65 +1,23 @@
 import json
 import logging
+import math
 import random
+import traceback
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
 import flask
-import google.cloud.logging
-from google.cloud import firestore, tasks_v2
-from google.protobuf import timestamp_pb2
 
+from clist import ClistAPI
 from codeforces import CodeforcesAPI, CodeforcesError, Problem
-
-google.cloud.logging.Client().setup_logging()
-
-try:
-    import googleclouddebugger
-
-    googleclouddebugger.enable(breakpoint_enable_canary=False)
-except ImportError:
-    pass
-
-# load firestore
-db = firestore.Client(project='tgbot-340618')
-
-# load cloud task config
-task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path("tgbot-340618", "asia-northeast1", "cfbot-verification")
-
-with open(".credentials") as f:
-    tgbot_token = f.read().strip()
-
-tg_chat_id = -1001669733846
+from common import config, db, get_handle, make_tg_api_request, schedule_task, session
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
-
-
-def schedule_verify(user_id: int, dt: datetime):
-    data = {"user_id": user_id}
-
-    timestamp = timestamp_pb2.Timestamp()
-    timestamp.FromDatetime(dt)
-
-    task = {
-        "http_request": {
-            "http_method": tasks_v2.HttpMethod.POST,
-            "url": "https://asia-northeast1-tgbot-340618.cloudfunctions.net/cf_verification",
-            "headers": {"Content-type": "application/json"},
-            "body": json.dumps(data).encode("utf-8")
-        },
-        "schedule_time": timestamp
-    }
-    task_client.create_task(parent=task_parent, task=task)
+clist_client = ClistAPI(config["CLIST_API_KEY"])
 
 
 def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
-    logging.info({
-        "tags": list(tags),
-        "rating": rating,
-    })
-
     filtered_problems = cf_client.get_problems()
     if "*special" not in tags:
         filtered_problems = [p for p in filtered_problems if "*special" not in p.tags]
@@ -73,11 +31,9 @@ def select(tags: set[str], rating: Optional[list[int]]) -> Optional[Problem]:
 
     if filtered_problems := list(filtered_problems):
         return random.choice(filtered_problems)
-    else:
-        return None
 
 
-class tgmsg_digester():
+class TGMessageDigester:
     def __init__(self, data):
         self.data = data
         self.response: Optional[dict[str, Any]] = None  # response objects for other endpoints
@@ -114,7 +70,8 @@ class tgmsg_digester():
             self.text_response = (
                 "Commands:\n"
                 "    /help - Hi\n"
-                "    /tags - Available tags\n"
+                "    /sign_on - Confirm your identity as a codeforces user\n"
+                "    /stalk - Show codeforces profile\n"
                 "    /select - Random codeforces problem\n"
                 "        Parameters:\n"
                 "            tags: csv form of tags\n"
@@ -123,8 +80,9 @@ class tgmsg_digester():
                 "            /select rating=1800-2000\n"
                 "            /select tags=math,dp\n"
                 "            /select tags=fft|rating=2400\n"
-                "    /sign_on - Confirm your identity as a codeforces user\n"
-                "    /stalk - Show codeforces profile\n\n"
+                "    /tags - Show available tags\n"
+                "    /contests - Show upcoming contests\n"
+                "    /delta - Check predicted/official rating changes\n\n"
                 "If you are willing to contribute, please submit a PR "
                 "<a href='https://github.com/eepnt/tgbot_codeforcewarrior'>here</a>."
             )
@@ -136,11 +94,11 @@ class tgmsg_digester():
                 "sticker": "CAACAgUAAxkBAAEJajlisHTO24Hg08vl_4yyrtoqifSYTgACGQcAArcy0VcwPcCmXDt1AygE"
             }
         elif cmd == "/tags":
-            self.text_response = ", ".join(cf_client.get_available_tags())
+            self.text_response = "Tags: " + ", ".join(cf_client.get_available_tags())
         elif cmd == "/select":
-            # TODO: Take rating and solved problems into account for registered users
             tags = set()
             rating = None
+            r_suggested = False
             try:
                 splits = [s.strip() for s in content.split('|') if s and not s.isspace()]
                 for entry in splits:
@@ -159,11 +117,24 @@ class tgmsg_digester():
             except (ValueError, AssertionError):
                 self.text_response = "Your query is invalid"
             else:
-                if problem := select(tags, rating):
+                if not rating and (handle := get_handle(user["id"])):
+                    r_suggested = True
+                    cf_user = cf_client.get_user(handle)
+                    if cf_user.rating:
+                        r_min = max(math.ceil(cf_user.rating / 100) * 100, 800)
+                    else:
+                        r_min = 800
+                    rating = [r_min, r_min + 200]
+
+                problem = select(tags, rating)
+                if not problem and r_suggested:
+                    problem = select(tags, rating := None)
+
+                if problem:
                     self.text_response = str(problem)
                 else:
-                    self.text_response = "no problem match search criteria {} {}".format(tags, rating)
-        elif cmd == "/sign_on":
+                    self.text_response = f"no problem match search criteria {tags} {rating}"
+        elif cmd in ("/sign_on", "/signon", "/sign_in", "/signin"):
             if user is None:
                 logging.error("unexpected response")
                 return
@@ -192,7 +163,7 @@ class tgmsg_digester():
                         else:
                             self.text_response = (
                                 "已有成員已登記此 handle\n"
-                                "如果你確實持有這 codeforces 帳號，請聯絡 @jonowowo"
+                                "如果你確實持有這 codeforces 帳號，請聯絡 @jowonowo"
                             )
                         return
 
@@ -206,31 +177,38 @@ class tgmsg_digester():
                         "count": 0
                     })
 
-                    # Schedule function execution
-                    now = datetime.utcnow()
-                    schedule_verify(user["id"], now + timedelta(seconds=60))
+                    schedule_task("cf_verification", user["id"], datetime.utcnow() + timedelta(seconds=30))
 
                     self.text_response = (
                         f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
                         "你可以忽略題目要求並提交錯誤的程式\n"
-                        "我在提交後一分鐘內會確認你的身份"
+                        "我在提交後半分鐘內會確認你的身份"
                     )
         elif cmd == "/stalk":
             if "reply_to_message" in self.data["message"]:
                 user_id = self.data["message"]["reply_to_message"]["from"]["id"]
             else:
                 user_id = user["id"]
-            doc = db.collection("cfbot_handle").document(str(user_id)).get()
-            if doc.exists:
-                handle = doc.to_dict()["handle"]
+            if handle := get_handle(user_id):
                 cf_user = cf_client.get_user(handle)
                 self.text_response = str(cf_user)
             else:
                 self.text_response = "Not yet use /sign_on"
         elif cmd == "/contests":
-            contests = cf_client.get_contests()
+            contests = clist_client.get_upcoming_contests()
             self.text_response = "\n\n".join([str(c) for c in contests])
             self.disable_web_page_preview = True
+        elif cmd == "/delta":
+            chat_id = self.data["message"]["chat"]["id"]
+            if chat_id == config["CHAT_ID"] or get_handle(user["id"]):
+                session.post(
+                    f"{config['CF_UPDATE_URL']}/delta",
+                    json={"chat_id": chat_id},
+                    headers={"X-Auth-Token": config["SECRET"]},
+                    timeout=5
+                )
+            else:
+                self.text_response = "Please use this command inside the group."
 
     def new_member_join(self, user):
         if not user["is_bot"]:
@@ -238,11 +216,10 @@ class tgmsg_digester():
 
     def chat_join_request(self, chat_join_request):
         user_id = chat_join_request["from"]["id"]
-        doc = db.collection("cfbot_handle").document(str(user_id)).get()
-        if doc.exists:
+        if get_handle(user_id):
             self.response = {
                 "method": "approveChatJoinRequest",
-                "chat_id": tg_chat_id,
+                "chat_id": config["CHAT_ID"],
                 "user_id": user_id
             }
         else:
@@ -256,6 +233,7 @@ class tgmsg_digester():
                 ),
                 "parse_mode": "HTML"
             }
+            schedule_task("decline_join_request", user_id, datetime.utcnow() + timedelta(seconds=30 * 60))
 
     def response_output(self):
         if self.text_response and "message" in self.data:
@@ -274,17 +252,27 @@ def hello():
     try:
         data = flask.request.get_json()
         logging.info(data)
-        response = tgmsg_digester(data).response_output()
+        response = TGMessageDigester(data).response_output()
         logging.info(response)
         if response:
             return flask.jsonify(response)
-        else:
-            return ""
     except Exception as e:
-        import traceback
         logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
-        return ""
+    return ""
 
 
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8080, info=True)
+@app.before_first_request
+def startup():
+    resp = make_tg_api_request("setMyCommands", params={
+        "commands": json.dumps([
+            {"command": "help", "description": "See help message"},
+            {"command": "sign_on", "description": "Verify your codeforces handle"},
+            {"command": "stalk", "description": "Show codeforces profile"},
+            {"command": "select", "description": "Get a problem"},
+            {"command": "tags", "description": "List problem tags"},
+            {"command": "contests", "description": "See upcoming contests"},
+            {"command": "delta", "description": "Check rating changes"}
+        ])
+    })
+    resp.raise_for_status()
+    logging.info(f"setMyCommands: {resp.text}")
