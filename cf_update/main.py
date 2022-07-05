@@ -31,7 +31,7 @@ lock = asyncio.Lock()
 delta_lock = asyncio.Lock()
 
 
-async def get_handles(app: web.Application) -> list[str]:
+def get_handles(app: web.Application) -> list[str]:
     users = app["db"].all()
     return [user["handle"] for user in users]
 
@@ -57,7 +57,7 @@ async def init(request: web.Request) -> web.Response:
 
     async with lock:
         # Delete absent handles
-        for handle in await get_handles(request.app):
+        for handle in get_handles(request.app):
             if handle in handles:
                 handles.remove(handle)
             else:
@@ -116,7 +116,7 @@ async def send_delta(app: web.Application, chat_id: int) -> None:
     )
 
     async with lock:
-        handles = await get_handles(app)
+        handles = get_handles(app)
 
     # Get the most recent contest(s)
     contests = await app["cf_client"].get_contests(phases=())
@@ -125,9 +125,12 @@ async def send_delta(app: web.Application, chat_id: int) -> None:
     contests = [c for c in contests if c.startTimeSeconds == contests[-1].startTimeSeconds]
 
     results = await asyncio.gather(*[get_delta_table(app, c, handles) for c in contests])
+    text = "\n\n".join(results)
+    if any(c.phase == ContestPhase.SYSTEM_TEST for c in contests):
+        text += "\n\nSystem testing is ongoing. The deltas are not yet finalized."
 
     asyncio.create_task(
-        app["bot"].send_message(chat_id, "\n\n".join(results))
+        app["bot"].send_message(chat_id, text)
     )
 
 
@@ -181,7 +184,7 @@ async def update_status_forever(app: web.Application) -> None:
     await asyncio.sleep(1)
     while True:
         async with lock:
-            handles = await get_handles(app)
+            handles = get_handles(app)
 
         for handle in handles:
             try:
