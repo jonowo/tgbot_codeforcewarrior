@@ -56,6 +56,3 @@ Deploy on any web server.
 pip install -r requirements.txt
 python main.py
 ```
-
-# Roadmap
-- Handle concurrent Div 1 and Div 2 rounds for /delta

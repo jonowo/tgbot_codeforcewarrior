@@ -149,10 +149,6 @@ class Submission(BaseModel):
     def time(self) -> datetime:
         return utc_timestamp_to_hkt(self.creationTimeSeconds)
 
-    # @property
-    # def url(self) -> str:
-    #     return f"https://codeforces.com/contest/{self.contestId}/submission/{self.id}"
-
     def get_author(self) -> Optional[User]:
         if self.author.not_team():
             return self.author.members[0]
@@ -193,11 +189,6 @@ class Submission(BaseModel):
         return text
 
 
-# class RanklistRow(BaseModel):
-#     party: Party
-#     rank: int
-
-
 class RatingChange(BaseModel):
     contestId: int
     contestName: str
@@ -213,3 +204,6 @@ class RatingChange(BaseModel):
         if not change.startswith("-"):
             change = f"+{change}"
         return change
+
+    def get_table_row(self) -> tuple[int, str, str]:
+        return self.rank, self.handle, self.delta

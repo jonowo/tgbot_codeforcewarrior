@@ -195,9 +195,11 @@ class TGMessageDigester:
             else:
                 self.text_response = "Not yet use /sign_on"
         elif cmd == "/contests":
-            contests = clist_client.get_upcoming_contests()
-            self.text_response = "\n\n".join([str(c) for c in contests])
-            self.disable_web_page_preview = True
+            if contests := clist_client.get_upcoming_contests():
+                self.text_response = "\n\n".join([str(c) for c in contests])
+                self.disable_web_page_preview = True
+            else:
+                self.text_response = "No upcoming contests"
         elif cmd == "/delta":
             chat_id = self.data["message"]["chat"]["id"]
             if chat_id == config["CHAT_ID"] or get_handle(user["id"]):

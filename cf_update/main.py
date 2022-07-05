@@ -13,7 +13,7 @@ from prettytable import PrettyTable
 from tinydb import Query
 
 from clist import AsyncClistAPI
-from codeforces import AsyncCodeforcesAPI, CodeforcesError, ContestPhase, Submission
+from codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
 from codeforces.utils import HKT, hkt_now
 from predicted_deltas import get_predicted_deltas
 
@@ -73,23 +73,16 @@ async def make_tg_api_request(app: web.Application, endpoint: str, params: dict[
     )
 
 
-async def send_delta(app: web.Application, chat_id: int) -> None:
-    asyncio.create_task(
-        make_tg_api_request(app, "sendChatAction", params={
-            "chat_id": chat_id,
-            "action": "typing"
-        })
-    )
+def create_table(rows: list[tuple[int, str, str]]) -> PrettyTable:
+    table = PrettyTable(["#", "Handle", "∆"], sortby="#", align="r")
+    table.align["Handle"] = "l"
+    table.header_align = "c"
 
-    async with lock:
-        handles = await get_handles(app)
+    table.add_rows(rows)
+    return table
 
-    # Get most recent contest
-    contests = await app["cf_client"].get_contests(phases=())
-    contests = [c for c in contests if c.phase != ContestPhase.BEFORE]
-    contests.sort(key=lambda c: c.startTimeSeconds, reverse=True)
-    contest = contests[0]
 
+async def get_delta_table(app: web.Application, contest: Contest, handles: list[str]) -> str:
     predict = True
     if hkt_now() > contest.end_time:
         # Try to get actual rating changes
@@ -104,28 +97,46 @@ async def send_delta(app: web.Application, chat_id: int) -> None:
         else:
             predict = False
 
-    table = PrettyTable(["#", "Handle", "∆"], sortby="#", align="r")
-    table.align["Handle"] = "l"
-    table.header_align = "c"
-
     if predict:
         async with delta_lock:
             rating_changes = await get_predicted_deltas(app, contest.id)
-        for h in handles:
-            if h in rating_changes:
-                table.add_row(rating_changes[h])
+        rows = [rating_changes[h] for h in handles if h in rating_changes]
     else:
-        for h in handles:
-            if h in rating_changes:
-                table.add_row((rating_changes[h].rank, h, rating_changes[h].delta))
+        rows = [rating_changes[h].get_table_row() for h in handles if h in rating_changes]
+
+    if rows:
+        table = create_table(rows)
+        return (
+            f"{'Predicted' if predict else 'Official'} rating changes for {contest.linked_name}\n"
+            f"<pre>{table}</pre>"
+        )
+    else:
+        return f"No members are competing in {contest.linked_name}"
+
+
+async def send_delta(app: web.Application, chat_id: int) -> None:
+    asyncio.create_task(
+        make_tg_api_request(app, "sendChatAction", params={
+            "chat_id": chat_id,
+            "action": "typing"
+        })
+    )
+
+    async with lock:
+        handles = await get_handles(app)
+
+    # Get the most recent contest(s)
+    contests = await app["cf_client"].get_contests(phases=())
+    contests = [c for c in contests if c.phase != ContestPhase.BEFORE]
+    contests.sort(key=lambda c: (c.startTimeSeconds, c.id))
+    contests = [c for c in contests if c.startTimeSeconds == contests[-1].startTimeSeconds]
+
+    results = await asyncio.gather(*[get_delta_table(app, c, handles) for c in contests])
 
     asyncio.create_task(
         make_tg_api_request(app, "sendMessage", params={
             "chat_id": chat_id,
-            "text": (
-                f"{'Predicted' if predict else 'Official'} rating changes for {contest.linked_name}\n"
-                f"<pre>{table}</pre>"
-            ),
+            "text": "\n\n".join(results),
             "parse_mode": "HTML",
             "disable_web_page_preview": "true"
         })
