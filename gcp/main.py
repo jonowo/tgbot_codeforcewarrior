@@ -6,7 +6,7 @@ from flask import Request
 
 from codeforces import CodeforcesAPI
 from codeforces.utils import hkt_now
-from common import config, db, make_tg_api_request, schedule_task
+from common import config, db, get_handles, make_tg_api_request, schedule_task
 
 cf_client = CodeforcesAPI()
 
@@ -40,8 +40,7 @@ def cf_verification(request: Request) -> str:
     if verify(handle, problem_id):
         doc_ref.delete()
 
-        doc_ref = db.collection("cfbot_handle").document(str(user_id))
-        doc_ref.set({"handle": handle})
+        db.collection("cfbot_handle").document(str(user_id)).set({"handle": handle})
 
         make_tg_api_request(
             "sendMessage",
@@ -62,14 +61,10 @@ def cf_verification(request: Request) -> str:
             }
         )
 
-        handles = []
-        for doc in db.collection("cfbot_handle").stream():
-            handles.append(doc.to_dict()["handle"])
-
         # Notify cf_update
         requests.post(
             f"{config['CF_UPDATE_URL']}/",
-            json={"handles": handles},
+            json={"handles": get_handles()},
             headers={"X-Auth-Token": config["SECRET"]}
         )
 

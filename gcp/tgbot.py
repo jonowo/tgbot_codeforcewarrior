@@ -4,13 +4,15 @@ import math
 import random
 import traceback
 from datetime import datetime, timedelta
+from threading import Thread
 from typing import Any, Optional
 
 import flask
+from prettytable import PrettyTable
 
 from clist import ClistAPI
 from codeforces import CodeforcesAPI, CodeforcesError, Problem
-from common import config, db, get_handle, make_tg_api_request, schedule_task, session
+from common import config, db, get_handle, get_handles, make_tg_api_request, schedule_task, session
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
@@ -70,8 +72,9 @@ class TGMessageDigester:
             self.text_response = (
                 "Commands:\n"
                 "    /help - Hi\n"
-                "    /sign_on - Confirm your identity as a codeforces user\n"
+                "    /sign_on - Verify your codeforces handle\n"
                 "    /stalk - Show codeforces profile\n"
+                "    /explode - Show verified codeforces handles\n"
                 "    /select - Random codeforces problem\n"
                 "        Parameters:\n"
                 "            tags: csv form of tags\n"
@@ -134,11 +137,7 @@ class TGMessageDigester:
                     self.text_response = str(problem)
                 else:
                     self.text_response = f"no problem match search criteria {tags} {rating}"
-        elif cmd in ("/sign_on", "/signon", "/sign_in", "/signin"):
-            if user is None:
-                logging.error("unexpected response")
-                return
-
+        elif cmd in ("/sign_on", "/signon", "/sign_in", "/signin") and user:
             if content == "":
                 self.text_response = (
                     "請申請帳號: https://codeforces.com/register\n"
@@ -194,6 +193,29 @@ class TGMessageDigester:
                 self.text_response = str(cf_user)
             else:
                 self.text_response = "Not yet use /sign_on"
+        elif cmd == "/explode":
+            if self.data["message"]["chat"]["id"] != config["CHAT_ID"] and not get_handle(user["id"]):
+                self.text_response = "Please use this command inside the group."
+                return
+
+            cf_users = cf_client.get_users(*get_handles())
+            cf_users.sort(key=lambda u: u.rating if u.rating is not None else -69420, reverse=True)
+
+            table = PrettyTable(["Handle", "Rating", "Title"])
+            table.header_align = "c"
+            table.align["Handle"] = "l"
+            table.align["Rating"] = "r"
+            table.align["Title"] = "l"
+
+            for cf_user in cf_users:
+                if cf_user.rating is not None:
+                    row = (cf_user.handle, cf_user.rating, cf_user.rank)
+                else:
+                    row = (cf_user.handle, "-", "-")
+
+                table.add_row(row)
+
+            self.text_response = f"<pre>{table}</pre>"
         elif cmd == "/contests":
             if contests := clist_client.get_upcoming_contests():
                 self.text_response = "\n\n".join([str(c) for c in contests])
@@ -214,7 +236,11 @@ class TGMessageDigester:
 
     def new_member_join(self, user):
         if not user["is_bot"]:
-            self.text_response = "妳好"
+            self.response = {
+                "method": "sendSticker",
+                "chat_id": self.data["message"]["chat"]["id"],
+                "sticker": "CAACAgUAAxkBAAEJmfViw_xn_Bw-ItG3mI1K_CZc5iarTgACQgUAAs4ICVViKPYgGUNc7ykE"
+            }
 
     def chat_join_request(self, chat_join_request):
         user_id = chat_join_request["from"]["id"]
@@ -263,18 +289,21 @@ def hello():
     return ""
 
 
-@app.before_first_request
-def startup():
-    resp = make_tg_api_request("setMyCommands", params={
+def set_commands():
+    make_tg_api_request("setMyCommands", params={
         "commands": json.dumps([
             {"command": "help", "description": "See help message"},
             {"command": "sign_on", "description": "Verify your codeforces handle"},
             {"command": "stalk", "description": "Show codeforces profile"},
+            {"command": "explode", "description": "Show verified codeforces handles"},
             {"command": "select", "description": "Get a problem"},
             {"command": "tags", "description": "List problem tags"},
             {"command": "contests", "description": "See upcoming contests"},
             {"command": "delta", "description": "Check rating changes"}
         ])
     })
-    resp.raise_for_status()
-    logging.info(f"setMyCommands: {resp.text}")
+
+
+@app.before_first_request
+def startup():
+    Thread(target=set_commands, daemon=True).start()

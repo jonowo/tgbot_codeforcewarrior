@@ -15,6 +15,12 @@ class User(BaseModel):
     maxRating: Optional[int] = None
     maxRank: Optional[str] = None
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.rank:
+            self.rank = capwords(self.rank)
+            self.maxRank = capwords(self.maxRank)
+
     @property
     def url(self):
         return f"https://codeforces.com/profile/{self.handle}"
@@ -26,8 +32,8 @@ class User(BaseModel):
     def __str__(self) -> str:
         text = f"Handle: {self.linked_name}\n"
         if self.rating:
-            text += f"Rating: {self.rating}, {capwords(self.rank)}\n"
-            text += f"Peak rating: {self.maxRating}, {capwords(self.maxRank)}"
+            text += f"Rating: {self.rating}, {self.rank}\n"
+            text += f"Peak rating: {self.maxRating}, {self.maxRank}"
         else:
             text += "Unrated"
         return text

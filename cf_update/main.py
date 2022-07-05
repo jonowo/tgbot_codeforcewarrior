@@ -2,20 +2,23 @@ import asyncio
 import contextlib
 import json
 import logging
+import random
 import traceback
 from datetime import timedelta
-from typing import Any
 
 import aiocron
 from aiohttp import ClientSession, web
 from aiotinydb import AIOTinyDB
 from prettytable import PrettyTable
+from telegram.constants import ParseMode
+from telegram.ext import Application, Defaults
 from tinydb import Query
 
 from clist import AsyncClistAPI
 from codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
 from codeforces.utils import HKT, hkt_now
 from predicted_deltas import get_predicted_deltas
+from stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
 
 logging.basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -66,17 +69,10 @@ async def init(request: web.Request) -> web.Response:
     return web.json_response({"success": True})
 
 
-async def make_tg_api_request(app: web.Application, endpoint: str, params: dict[str, Any]) -> None:
-    await app["session"].post(
-        f"https://api.telegram.org/bot{config['TOKEN']}/{endpoint}",
-        params=params
-    )
-
-
 def create_table(rows: list[tuple[int, str, str]]) -> PrettyTable:
     table = PrettyTable(["#", "Handle", "∆"], sortby="#", align="r")
-    table.align["Handle"] = "l"
     table.header_align = "c"
+    table.align["Handle"] = "l"
 
     table.add_rows(rows)
     return table
@@ -116,10 +112,7 @@ async def get_delta_table(app: web.Application, contest: Contest, handles: list[
 
 async def send_delta(app: web.Application, chat_id: int) -> None:
     asyncio.create_task(
-        make_tg_api_request(app, "sendChatAction", params={
-            "chat_id": chat_id,
-            "action": "typing"
-        })
+        app["bot"].send_chat_action(chat_id, "typing")
     )
 
     async with lock:
@@ -134,12 +127,7 @@ async def send_delta(app: web.Application, chat_id: int) -> None:
     results = await asyncio.gather(*[get_delta_table(app, c, handles) for c in contests])
 
     asyncio.create_task(
-        make_tg_api_request(app, "sendMessage", params={
-            "chat_id": chat_id,
-            "text": "\n\n".join(results),
-            "parse_mode": "HTML",
-            "disable_web_page_preview": "true"
-        })
+        app["bot"].send_message(chat_id, "\n\n".join(results))
     )
 
 
@@ -178,14 +166,10 @@ async def update_status(app: web.Application, handle: str) -> None:
         for submission in updated_status:
             contest = await app["cf_client"].get_contest(submission.author.contestId)
             if submission.should_notify(contest):
-                asyncio.create_task(
-                    make_tg_api_request(app, "sendMessage", params={
-                        "chat_id": config["CHAT_ID"],
-                        "text": str(submission),
-                        "parse_mode": "HTML",
-                        "disable_web_page_preview": "true"
-                    })
-                )
+                await app["bot"].send_message(config["CHAT_ID"], str(submission))
+
+                sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)
+                await app["bot"].send_sticker(config["CHAT_ID"], sticker)
 
         app["db"].update(
             {"status": [s.dict() for s in new_status]},
@@ -194,15 +178,16 @@ async def update_status(app: web.Application, handle: str) -> None:
 
 
 async def update_status_forever(app: web.Application) -> None:
+    await asyncio.sleep(1)
     while True:
-        await asyncio.sleep(0.1)
         async with lock:
             handles = await get_handles(app)
 
         for handle in handles:
             try:
                 # At least 3s between each update
-                await asyncio.gather(update_status(app, handle), asyncio.sleep(3))
+                await asyncio.gather(update_status(app, handle), asyncio.sleep(2.8))
+                await asyncio.sleep(0.2)
             except asyncio.CancelledError:
                 return
             except Exception as e:
@@ -222,14 +207,9 @@ async def notify_upcoming_contest(app: web.Application) -> None:
             continue
 
         text = f"{contest.linked_name} begins in {minutes_left} minutes"
-        asyncio.create_task(
-            make_tg_api_request(app, "sendMessage", params={
-                "chat_id": config["CHAT_ID"],
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": "true"
-            })
-        )
+        await app["bot"].send_message(config["CHAT_ID"], text)
+        if minutes_left == 5:
+            await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
 
 
 async def startup(app: web.Application) -> None:
@@ -245,6 +225,14 @@ async def startup(app: web.Application) -> None:
     app["session"] = await context_stack.enter_async_context(ClientSession())
 
     app["db"] = await context_stack.enter_async_context(AIOTinyDB("db.json"))
+
+    application = (
+        Application.builder()
+        .token(config["TOKEN"])
+        .defaults(Defaults(parse_mode=ParseMode.HTML, disable_web_page_preview=True))
+        .build()
+    )
+    app["bot"] = await context_stack.enter_async_context(application.bot)
 
     aiocron.crontab("*/5 * * * *", func=notify_upcoming_contest, args=(app,), tz=HKT)
     asyncio.create_task(update_status_forever(app))

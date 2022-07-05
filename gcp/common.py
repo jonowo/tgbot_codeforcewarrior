@@ -4,6 +4,7 @@ from typing import Any, Optional
 
 import google.cloud.logging
 import requests
+from cachetools import TTLCache, cached
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
@@ -61,3 +62,11 @@ def get_handle(user_id: int) -> Optional[str]:
     doc = db.collection("cfbot_handle").document(str(user_id)).get()
     if doc.exists:
         return doc.to_dict()["handle"]
+
+
+@cached(cache=TTLCache(maxsize=1, ttl=5))
+def get_handles() -> list[str]:
+    handles = []
+    for doc in db.collection("cfbot_handle").stream():
+        handles.append(doc.to_dict()["handle"])
+    return handles

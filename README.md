@@ -35,17 +35,20 @@ Set up webhook for Telegram bot.
 
 ## Deployment
 ### tgbot
-```cmd
+```bash
+cd gcp
 gcloud app deploy
 ```
 
 ### cf_verification
-```cmd
+```bash
+cd gcp
 gcloud functions deploy cf_verification --trigger-http --allow-unauthenticated --region asia-northeast1 --memory 256MB --runtime python39
 ```
 
 ### decline_join_request
-```cmd
+```bash
+cd gcp
 gcloud functions deploy decline_join_request --trigger-http --allow-unauthenticated --region asia-northeast1 --memory 256MB --runtime python39
 ```
 
@@ -53,6 +56,7 @@ gcloud functions deploy decline_join_request --trigger-http --allow-unauthentica
 Deploy on any web server.
 
 ```bash
+cd cf_update
 pip install -r requirements.txt
 python main.py
 ```
