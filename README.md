@@ -7,7 +7,6 @@ Create `tgbot/config.json` with the following format:
   "TOKEN": "",
   "SECRET": "",
   "CLIST_API_KEY": "",
-  "PROJECT_ID": "",
   "FUNCTIONS_URL": "https://xxxxxxxxxxx.cloudfunctions.net",
   "CF_UPDATE_URL": "",
   "CHAT_ID": -100000000000
@@ -17,7 +16,6 @@ Create `tgbot/config.json` with the following format:
 - TOKEN: Telegram bot token
 - SECRET: Generate using `python -c "import secrets; print(secrets.token_hex(10))"`
 - CLIST_API_KEY: Create a clist.by account and obtain it [here](https://clist.by/api/v2/doc/)
-- PROJECT_ID: Project ID on Google Cloud Platform (GCP)
 - FUNCTIONS_URL: URL of the functions deployed on GCP
 - CF_UPDATE_URL: URL of where `cf_update` is deployed
 - CHAT_ID: Telegram group ID
