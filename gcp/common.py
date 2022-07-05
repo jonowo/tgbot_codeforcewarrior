@@ -1,4 +1,4 @@
-import json
+import json, os
 from datetime import datetime
 from typing import Any, Optional
 
@@ -23,11 +23,11 @@ config["FUNCTIONS_URL"] = config["FUNCTIONS_URL"].rstrip("/")
 config["CF_UPDATE_URL"] = config["CF_UPDATE_URL"].rstrip("/")
 
 # load firestore
-db = firestore.Client(project=config["PROJECT_ID"])
+db = firestore.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
 
 # load cloud task config
 task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path(config["PROJECT_ID"], "asia-northeast1", "cfbot-verification")
+task_parent = task_client.queue_path(os.getenv('GOOGLE_CLOUD_PROJECT'), "asia-northeast1", "cfbot-verification")
 
 session = requests.Session()
 
