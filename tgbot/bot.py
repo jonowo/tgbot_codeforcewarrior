@@ -15,6 +15,8 @@ from tgbot.codeforces import CodeforcesAPI, CodeforcesError, Problem
 from tgbot.config import config
 from tgbot.gcp_common import db, get_handle, get_handles, make_tg_api_request, schedule_task, session
 
+logger = logging.getLogger(__name__)
+
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
 clist_client = ClistAPI(config["CLIST_API_KEY"])
@@ -280,13 +282,13 @@ class TGMessageDigester:
 def hello():
     try:
         data = flask.request.get_json()
-        logging.info(data)
+        logger.info(data)
         response = TGMessageDigester(data).response_output()
-        logging.info(response)
+        logger.info(response)
         if response:
             return flask.jsonify(response)
     except Exception as e:
-        logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+        logger.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
     return ""
 
 

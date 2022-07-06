@@ -7,3 +7,5 @@
 
 db.json
 *.md
+
+deploy.bat
