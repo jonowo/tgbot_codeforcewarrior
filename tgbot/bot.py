@@ -10,9 +10,10 @@ from typing import Any, Optional
 import flask
 from prettytable import PrettyTable
 
-from clist import ClistAPI
-from codeforces import CodeforcesAPI, CodeforcesError, Problem
-from common import config, db, get_handle, get_handles, make_tg_api_request, schedule_task, session
+from tgbot.clist import ClistAPI
+from tgbot.codeforces import CodeforcesAPI, CodeforcesError, Problem
+from tgbot.config import config
+from tgbot.gcp_common import db, get_handle, get_handles, make_tg_api_request, schedule_task, session
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()

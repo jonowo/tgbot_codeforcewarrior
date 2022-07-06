@@ -9,6 +9,8 @@ from cachetools import TTLCache, cached
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
 
+from tgbot.config import config
+
 google.cloud.logging.Client().setup_logging()
 
 try:
@@ -17,11 +19,6 @@ try:
     googleclouddebugger.enable(breakpoint_enable_canary=False)
 except ImportError:
     pass
-
-with open("config.json") as f:
-    config = json.load(f)
-config["FUNCTIONS_URL"] = config["FUNCTIONS_URL"].rstrip("/")
-config["CF_UPDATE_URL"] = config["CF_UPDATE_URL"].rstrip("/")
 
 # load firestore
 db = firestore.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))

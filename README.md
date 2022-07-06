@@ -20,41 +20,28 @@ Create `tgbot/config.json` with the following format:
 - CF_UPDATE_URL: URL of where `cf_update` is deployed
 - CHAT_ID: Telegram group ID
 
-Using Windows cmd, create hard links and directory junctions:
-```cmd
-mklink /h .\cf_update\config.json .\gcp\config.json
-mklink /j .\cf_update\codeforces .\gcp\codeforces
-mklink /j .\cf_update\clist .\gcp\clist
-```
-
-or equivalent on other OS.
-
 Set up webhook for Telegram bot.
 
 ## Deployment
 ### tgbot
 ```bash
-cd gcp
 gcloud app deploy
 ```
 
 ### cf_verification
 ```bash
-cd gcp
 gcloud functions deploy cf_verification --trigger-http --allow-unauthenticated --region asia-northeast1 --memory 256MB --runtime python39
 ```
 
 ### decline_join_request
 ```bash
-cd gcp
 gcloud functions deploy decline_join_request --trigger-http --allow-unauthenticated --region asia-northeast1 --memory 256MB --runtime python39
 ```
 
 ### cf_update
-Deploy on any web server.
+Deploy on any *nix web server. (gunicorn does not work on Windows)
 
 ```bash
-cd cf_update
 pip install -r requirements.txt
-python main.py
+gunicorn tgbot.cf_update:create_app --bind localhost:3000 --worker-class aiohttp.GunicornWebWorker
 ```

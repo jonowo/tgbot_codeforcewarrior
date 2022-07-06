@@ -5,7 +5,11 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from .utils import duration, hkt_now, utc_timestamp_to_hkt
+from tgbot.utils import duration, hkt_now, utc_timestamp_to_hkt
+
+
+class CodeforcesError(Exception):
+    pass
 
 
 class User(BaseModel):

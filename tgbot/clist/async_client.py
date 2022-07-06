@@ -4,8 +4,8 @@ from typing import Any, Optional
 
 from aiohttp import ClientSession
 
-from .models import ContestInfo
-from .utils import ClistError, RESOURCES, hkt_now
+from tgbot.clist.models import ClistError, ContestInfo
+from tgbot.utils import RESOURCES, hkt_now
 
 logger = logging.getLogger(__name__)
 

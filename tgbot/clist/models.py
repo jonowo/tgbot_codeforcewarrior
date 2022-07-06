@@ -2,7 +2,11 @@ from datetime import datetime, timezone
 
 from pydantic import BaseModel
 
-from .utils import HKT, RESOURCES, duration, hkt_now
+from tgbot.utils import HKT, RESOURCES, duration, hkt_now
+
+
+class ClistError(Exception):
+    pass
 
 
 class ContestInfo(BaseModel):

@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import json
 import logging
 import random
 import traceback
@@ -14,17 +13,15 @@ from telegram.constants import ParseMode
 from telegram.ext import Application, Defaults
 from tinydb import Query
 
-from clist import AsyncClistAPI
-from codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
-from codeforces.utils import HKT, hkt_now
-from predicted_deltas import get_predicted_deltas
-from stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
+from tgbot.cf_update.predicted_deltas import get_predicted_deltas
+from tgbot.cf_update.stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
+from tgbot.clist import AsyncClistAPI
+from tgbot.codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
+from tgbot.config import config
+from tgbot.utils import HKT, hkt_now
 
 logging.basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-with open("config.json") as f:
-    config = json.load(f)
 
 routes = web.RouteTableDef()
 lock = asyncio.Lock()
@@ -216,6 +213,8 @@ async def notify_upcoming_contest(app: web.Application) -> None:
 
 
 async def startup(app: web.Application) -> None:
+    logger.info("Startup in progress")
+
     context_stack = contextlib.AsyncExitStack()
     app["context_stack"] = context_stack
 
@@ -245,13 +244,9 @@ async def cleanup(app: web.Application) -> None:
     await app["context_stack"].aclose()
 
 
-def main() -> None:
+async def create_app() -> web.Application:
     app = web.Application()
     app.add_routes(routes)
     app.on_startup.append(startup)
     app.on_cleanup.append(cleanup)
-    web.run_app(app, host="0.0.0.0", port=3000, loop=asyncio.get_event_loop())
-
-
-if __name__ == "__main__":
-    main()
+    return app

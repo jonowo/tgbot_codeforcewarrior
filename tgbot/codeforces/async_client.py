@@ -4,8 +4,7 @@ from typing import Any, Optional
 from aiocache import cached
 from aiohttp import ClientSession
 
-from .models import Contest, ContestPhase, RatingChange, Submission, User
-from .utils import CodeforcesError
+from tgbot.codeforces.models import CodeforcesError, Contest, ContestPhase, RatingChange, Submission, User
 
 logger = logging.getLogger(__name__)
 
