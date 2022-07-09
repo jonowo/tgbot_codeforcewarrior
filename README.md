@@ -43,5 +43,5 @@ Deploy on any *nix web server. (gunicorn does not work on Windows)
 
 ```bash
 pip install -r requirements.txt
-gunicorn tgbot.cf_update:create_app --bind localhost:3000 --worker-class aiohttp.GunicornWebWorker
+gunicorn tgbot.cf_update:create_app --bind localhost:4000 --worker-class aiohttp.GunicornWebWorker
 ```

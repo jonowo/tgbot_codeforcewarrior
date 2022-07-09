@@ -191,7 +191,7 @@ async def update_status_forever(app: web.Application) -> None:
             except asyncio.CancelledError:
                 return
             except Exception as e:
-                logging.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+                logger.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
 
 
 async def notify_upcoming_contest(app: web.Application) -> None:

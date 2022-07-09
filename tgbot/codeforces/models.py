@@ -153,7 +153,10 @@ class Submission(BaseModel):
     passedTestCount: int
 
     def __eq__(self, other: "Submission") -> bool:
-        return self.id == other.id and self.verdict == other.verdict and self.testset == other.testset
+        return (self.id == other.id
+                and self.verdict == other.verdict
+                and self.testset == other.testset
+                and self.passedTestCount == other.passedTestCount)
 
     @property
     def time(self) -> datetime:
