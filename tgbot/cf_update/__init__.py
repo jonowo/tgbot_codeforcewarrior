@@ -7,6 +7,7 @@ from datetime import timedelta
 
 import aiocron
 from aiohttp import ClientSession, web
+from aiohttp_middlewares import error_context, error_middleware
 from aiotinydb import AIOTinyDB
 from prettytable import PrettyTable
 from telegram.constants import ParseMode
@@ -159,13 +160,8 @@ async def update_status(app: web.Application, handle: str) -> None:
         status_dict = {s.id: s for s in old_status}
         updated_status = [s for s in new_status if s.id not in status_dict or status_dict[s.id] != s]
 
-        contest_ids = {s.author.contestId for s in updated_status}
-        # Get all contests simultaneously and cache them
-        await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
-
         for submission in updated_status:
-            contest = await app["cf_client"].get_contest(submission.author.contestId)
-            if submission.should_notify(contest):
+            if submission.should_notify():
                 await app["bot"].send_message(config["CHAT_ID"], str(submission))
 
                 sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)
@@ -244,8 +240,17 @@ async def cleanup(app: web.Application) -> None:
     await app["context_stack"].aclose()
 
 
+async def default_error_handler(request: web.Request) -> web.Response:
+    with error_context(request) as context:
+        exc_info = not isinstance(context.err, CodeforcesError)
+        logger.error(context.message, exc_info=exc_info)
+        return web.json_response(context.data, status=context.status)
+
+
 async def create_app() -> web.Application:
-    app = web.Application()
+    app = web.Application(
+        middlewares=(error_middleware(default_handler=default_error_handler),)
+    )
     app.add_routes(routes)
     app.on_startup.append(startup)
     app.on_cleanup.append(cleanup)

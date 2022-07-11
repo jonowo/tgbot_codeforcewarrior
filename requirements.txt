@@ -13,11 +13,12 @@ gunicorn
 requests
 pydantic
 cachetools
-aiohttp[speedups]
-aiocache
 git+https://github.com/jazzband/prettytable#egg=prettytable
 
 # cf_update
+aiohttp[speedups]
+aiohttp-middlewares
+aiocache
 aiocron
 aiotinydb
 tinydb==3.12.1

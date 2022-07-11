@@ -37,5 +37,5 @@ class ClistAPI:
         })
         contests = [ContestInfo(**c) for c in data]
         contests = [c for c in contests if c.start_time <= hkt_now() + timedelta(days=14)]
-        contests.sort(key=lambda c: (c.start_time, c.end_time))
+        contests.sort(key=lambda c: (c.start_time, c.end_time, c.event))
         return contests
