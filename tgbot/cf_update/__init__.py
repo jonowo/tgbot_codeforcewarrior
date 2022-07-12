@@ -160,8 +160,13 @@ async def update_status(app: web.Application, handle: str) -> None:
         status_dict = {s.id: s for s in old_status}
         updated_status = [s for s in new_status if s.id not in status_dict or status_dict[s.id] != s]
 
+        contest_ids = {s.author.contestId for s in updated_status}
+        # Get all contests simultaneously and cache them
+        await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
+
         for submission in updated_status:
-            if submission.should_notify():
+            contest = await app["cf_client"].get_contest(submission.author.contestId)
+            if submission.should_notify(contest):
                 await app["bot"].send_message(config["CHAT_ID"], str(submission))
 
                 sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)
@@ -242,8 +247,10 @@ async def cleanup(app: web.Application) -> None:
 
 async def default_error_handler(request: web.Request) -> web.Response:
     with error_context(request) as context:
-        exc_info = not isinstance(context.err, CodeforcesError)
-        logger.error(context.message, exc_info=exc_info)
+        if isinstance(context.err, CodeforcesError):
+            logger.warning(context.message)
+        else:
+            logger.error(context.message, exc_info=True)
         return web.json_response(context.data, status=context.status)
 
 

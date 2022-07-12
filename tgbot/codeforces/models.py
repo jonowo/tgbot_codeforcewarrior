@@ -166,16 +166,17 @@ class Submission(BaseModel):
         if self.author.not_team():
             return self.author.members[0]
 
-    def is_fst(self) -> bool:
+    def is_fst(self, contest: Contest) -> bool:
         """Check if the submission failed main tests after passing pretests during contest."""
         return (
-                self.author.participantType in (ParticipantType.CONTESTANT, ParticipantType.OUT_OF_COMPETITION)
+                hkt_now() > contest.end_time
+                and self.author.participantType in (ParticipantType.CONTESTANT, ParticipantType.OUT_OF_COMPETITION)
                 and self.testset.startswith("TESTS")
                 and self.verdict is not None
                 and self.verdict not in ("OK", "TESTING", "CHALLENGED", "SKIPPED", "PARTIAL")
         )
 
-    def should_notify(self) -> bool:
+    def should_notify(self, contest) -> bool:
         """Determine if the submission should be announced in group."""
         if self.verdict == "TESTING":
             return False
@@ -183,7 +184,7 @@ class Submission(BaseModel):
         if self.verdict in ("OK", "CHALLENGED"):
             return True
 
-        return self.is_fst()
+        return self.is_fst(contest)
 
     def __str__(self) -> str:
         """Group notification for submission update."""
