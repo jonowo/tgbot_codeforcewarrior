@@ -85,7 +85,7 @@ class AsyncCodeforcesAPI:
         contests.sort(key=lambda c: c.startTimeSeconds)
         return contests
 
-    @cached(ttl=60 * 60)
+    @cached(ttl=60)
     async def get_rating_changes(self, contest_id: int) -> dict[str, RatingChange]:
         data = await self._request("contest.ratingChanges", params={"contestId": contest_id})
         rating_changes = [RatingChange(**rc) for rc in data]

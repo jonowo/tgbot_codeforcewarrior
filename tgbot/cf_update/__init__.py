@@ -208,10 +208,15 @@ async def notify_upcoming_contest(app: web.Application) -> None:
             minutes_left = 5
         elif now + timedelta(minutes=15) == contest.start_time:
             minutes_left = 15
+        elif now + timedelta(minutes=60) == contest.start_time:
+            minutes_left = 60
         else:
             continue
 
-        text = f"{contest.linked_name} begins in {minutes_left} minutes"
+        if minutes_left == 60:
+            text = f"{contest.linked_name} begins in 1 hour"
+        else:
+            text = f"{contest.linked_name} begins in {minutes_left} minutes"
         await app["bot"].send_message(config["CHAT_ID"], text)
         if minutes_left == 5:
             await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
