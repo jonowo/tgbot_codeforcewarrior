@@ -203,6 +203,8 @@ async def notify_upcoming_contest(app: web.Application) -> None:
     now = hkt_now().replace(second=0, microsecond=0)
     contests = await app["clist_client"].get_upcoming_contests()
 
+    text = ""
+    send_sticker = False
     for contest in contests:
         if now + timedelta(minutes=5) == contest.start_time:
             minutes_left = 5
@@ -214,12 +216,15 @@ async def notify_upcoming_contest(app: web.Application) -> None:
             continue
 
         if minutes_left == 60:
-            text = f"{contest.linked_name} begins in 1 hour"
+            text += f"{contest.linked_name} begins in 1 hour\n"
         else:
-            text = f"{contest.linked_name} begins in {minutes_left} minutes"
+            text += f"{contest.linked_name} begins in {minutes_left} minutes\n"
+            send_sticker = send_sticker or minutes_left == 5
+
+    if text:
         await app["bot"].send_message(config["CHAT_ID"], text)
-        if minutes_left == 5:
-            await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
+    if send_sticker:
+        await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
 
 
 async def startup(app: web.Application) -> None:

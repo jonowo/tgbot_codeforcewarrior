@@ -43,3 +43,25 @@ class ContestInfo(BaseModel):
             text += f"Ends in {duration(self.end_time - now)}"
 
         return text
+
+    def can_join(self, other: "ContestInfo") -> bool:
+        return (
+                self.resource == other.resource
+                and self.start_time == other.start_time
+                and self.end_time == other.end_time
+        )
+
+    def join_str(self, other: "ContestInfo") -> str:
+        text = self.start_time.strftime("%b {} (%a) %H:%M").format(self.start_time.day)
+        text += self.end_time.strftime(" - %H:%M HKT\n")
+
+        text += f"{self.linked_name}\n"
+        text += f"{other.linked_name}\n"
+
+        now = hkt_now()
+        if now < self.start_time:
+            text += f"Starts in {duration(self.start_time - now)}"
+        else:
+            text += f"Ends in {duration(self.end_time - now)}"
+
+        return text

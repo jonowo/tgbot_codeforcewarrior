@@ -221,7 +221,14 @@ class TGMessageDigester:
             self.text_response = f"<pre>{table}</pre>"
         elif cmd == "/contests":
             if contests := clist_client.get_upcoming_contests():
-                self.text_response = "\n\n".join([str(c) for c in contests])
+                text = []
+                for i in range(len(contests)):
+                    if i > 0 and contests[i - 1].can_join(contests[i]):
+                        del text[-1]
+                        text.append(contests[i - 1].join_str(contests[i]))
+                    else:
+                        text.append(str(contests[i]))
+                self.text_response = "\n\n".join(text)
                 self.disable_web_page_preview = True
             else:
                 self.text_response = "No upcoming contests"
