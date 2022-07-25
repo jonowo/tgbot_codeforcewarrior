@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel
 
@@ -31,8 +31,12 @@ class ContestInfo(BaseModel):
         return f"{RESOURCES[self.resource]}: <a href='{self.href}'>{self.event}</a>"
 
     def __str__(self) -> str:
-        text = self.start_time.strftime("%b {} (%a) %H:%M").format(self.start_time.day)
-        text += self.end_time.strftime(" - %H:%M HKT\n")
+        text = self.start_time.strftime("%b {} (%a) %H:%M - ").format(self.start_time.day)
+        if self.end_time - self.start_time >= timedelta(days=1):
+            text += self.end_time.strftime("%b {} (%a) %H:%M").format(self.end_time.day)
+        else:
+            text += self.end_time.strftime("%H:%M")
+        text += " HKT\n"
 
         text += f"{self.linked_name}\n"
 
