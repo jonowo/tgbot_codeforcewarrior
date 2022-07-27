@@ -1,0 +1,11 @@
+.gcloudignore
+.git
+.gitignore
+
+.idea/
+**/__pycache__/
+
+db.json
+*.md
+
+deploy.bat

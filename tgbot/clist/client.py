@@ -3,8 +3,8 @@ from datetime import timedelta
 
 import requests
 
-from .models import ContestInfo
-from .utils import ClistError, RESOURCES, hkt_now
+from tgbot.clist.models import ClistError, ContestInfo
+from tgbot.utils import RESOURCES, hkt_now
 
 logger = logging.getLogger(__name__)
 
@@ -37,5 +37,5 @@ class ClistAPI:
         })
         contests = [ContestInfo(**c) for c in data]
         contests = [c for c in contests if c.start_time <= hkt_now() + timedelta(days=14)]
-        contests.sort(key=lambda c: (c.start_time, c.end_time))
+        contests.sort(key=lambda c: (c.start_time, c.end_time, c.event))
         return contests

@@ -5,8 +5,7 @@ from typing import Optional
 import requests
 from cachetools import TTLCache, cached
 
-from .models import Contest, ContestPhase, Problem, Submission, User
-from .utils import CodeforcesError
+from tgbot.codeforces.models import CodeforcesError, Contest, ContestPhase, Problem, Submission, User
 
 logger = logging.getLogger(__name__)
 

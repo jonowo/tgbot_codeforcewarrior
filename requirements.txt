@@ -8,10 +8,19 @@ google-cloud-firestore
 functions-framework==3.*
 Flask==2.0.2
 
+# TG bot + functions
 gunicorn
 requests
 pydantic
 cachetools
-aiohttp[speedups]
-aiocache
 git+https://github.com/jazzband/prettytable#egg=prettytable
+
+# cf_update
+aiohttp[speedups]
+aiohttp-middlewares
+aiocache
+aiocron
+aiotinydb
+tinydb==3.12.1
+ujson
+python-telegram-bot==20.0a2

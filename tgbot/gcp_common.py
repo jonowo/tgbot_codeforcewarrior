@@ -1,5 +1,4 @@
 import json
-import os
 from datetime import datetime
 from typing import Any, Optional
 
@@ -8,6 +7,8 @@ import requests
 from cachetools import TTLCache, cached
 from google.cloud import firestore, tasks_v2
 from google.protobuf import timestamp_pb2
+
+from tgbot.config import config
 
 google.cloud.logging.Client().setup_logging()
 
@@ -18,19 +19,20 @@ try:
 except ImportError:
     pass
 
-with open("config.json") as f:
-    config = json.load(f)
-config["FUNCTIONS_URL"] = config["FUNCTIONS_URL"].rstrip("/")
-config["CF_UPDATE_URL"] = config["CF_UPDATE_URL"].rstrip("/")
+session = requests.Session()
+
+resp = session.get(
+    "http://metadata.google.internal/computeMetadata/v1/project/project-id",
+    headers={"Metadata-Flavor": "Google"}
+)
+PROJECT_ID = resp.text
 
 # load firestore
-db = firestore.Client(project=os.getenv('GOOGLE_CLOUD_PROJECT'))
+db = firestore.Client(project=PROJECT_ID)
 
 # load cloud task config
 task_client = tasks_v2.CloudTasksClient()
-task_parent = task_client.queue_path(os.getenv('GOOGLE_CLOUD_PROJECT'), "asia-northeast1", "cfbot-verification")
-
-session = requests.Session()
+task_parent = task_client.queue_path(PROJECT_ID, "asia-northeast1", "cfbot-verification")
 
 
 def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:

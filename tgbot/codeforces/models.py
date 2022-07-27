@@ -5,7 +5,11 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from .utils import duration, hkt_now, utc_timestamp_to_hkt
+from tgbot.utils import duration, hkt_now, utc_timestamp_to_hkt
+
+
+class CodeforcesError(Exception):
+    pass
 
 
 class User(BaseModel):
@@ -149,7 +153,10 @@ class Submission(BaseModel):
     passedTestCount: int
 
     def __eq__(self, other: "Submission") -> bool:
-        return self.id == other.id and self.verdict == other.verdict and self.testset == other.testset
+        return (self.id == other.id
+                and self.verdict == other.verdict
+                and self.testset == other.testset
+                and self.passedTestCount == other.passedTestCount)
 
     @property
     def time(self) -> datetime:
@@ -162,14 +169,14 @@ class Submission(BaseModel):
     def is_fst(self, contest: Contest) -> bool:
         """Check if the submission failed main tests after passing pretests during contest."""
         return (
-                contest.type in (ContestScoring.CF, ContestScoring.IOI)
+                hkt_now() > contest.end_time
                 and self.author.participantType in (ParticipantType.CONTESTANT, ParticipantType.OUT_OF_COMPETITION)
                 and self.testset.startswith("TESTS")
                 and self.verdict is not None
                 and self.verdict not in ("OK", "TESTING", "CHALLENGED", "SKIPPED", "PARTIAL")
         )
 
-    def should_notify(self, contest: Contest) -> bool:
+    def should_notify(self, contest) -> bool:
         """Determine if the submission should be announced in group."""
         if self.verdict == "TESTING":
             return False

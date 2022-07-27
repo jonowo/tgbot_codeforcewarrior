@@ -10,9 +10,12 @@ from typing import Any, Optional
 import flask
 from prettytable import PrettyTable
 
-from clist import ClistAPI
-from codeforces import CodeforcesAPI, CodeforcesError, Problem
-from common import config, db, get_handle, get_handles, make_tg_api_request, schedule_task, session
+from tgbot.clist import ClistAPI
+from tgbot.codeforces import CodeforcesAPI, CodeforcesError, Problem
+from tgbot.config import config
+from tgbot.gcp_common import db, get_handle, get_handles, make_tg_api_request, schedule_task, session
+
+logger = logging.getLogger(__name__)
 
 app = flask.Flask(__name__)
 cf_client = CodeforcesAPI()
@@ -218,7 +221,14 @@ class TGMessageDigester:
             self.text_response = f"<pre>{table}</pre>"
         elif cmd == "/contests":
             if contests := clist_client.get_upcoming_contests():
-                self.text_response = "\n\n".join([str(c) for c in contests])
+                text = []
+                for i in range(len(contests)):
+                    if i > 0 and contests[i - 1].can_join(contests[i]):
+                        del text[-1]
+                        text.append(contests[i - 1].join_str(contests[i]))
+                    else:
+                        text.append(str(contests[i]))
+                self.text_response = "\n\n".join(text)
                 self.disable_web_page_preview = True
             else:
                 self.text_response = "No upcoming contests"
@@ -279,13 +289,13 @@ class TGMessageDigester:
 def hello():
     try:
         data = flask.request.get_json()
-        logging.info(data)
+        logger.info(data)
         response = TGMessageDigester(data).response_output()
-        logging.info(response)
+        logger.info(response)
         if response:
             return flask.jsonify(response)
     except Exception as e:
-        logging.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
+        logger.error(''.join(traceback.format_exception(type(e), e, e.__traceback__)))
     return ""
 
 

@@ -4,9 +4,10 @@ import functions_framework
 import requests
 from flask import Request
 
-from codeforces import CodeforcesAPI
-from codeforces.utils import hkt_now
-from common import config, db, get_handles, make_tg_api_request, schedule_task
+from tgbot.codeforces import CodeforcesAPI
+from tgbot.config import config
+from tgbot.gcp_common import db, get_handles, make_tg_api_request, schedule_task
+from tgbot.utils import hkt_now
 
 cf_client = CodeforcesAPI()
 

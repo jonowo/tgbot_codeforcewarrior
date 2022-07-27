@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import json
 import logging
 import random
 import traceback
@@ -8,23 +7,23 @@ from datetime import timedelta
 
 import aiocron
 from aiohttp import ClientSession, web
+from aiohttp.web_exceptions import HTTPMethodNotAllowed, HTTPNotFound
+from aiohttp_middlewares import error_context, error_middleware
 from aiotinydb import AIOTinyDB
 from prettytable import PrettyTable
 from telegram.constants import ParseMode
 from telegram.ext import Application, Defaults
 from tinydb import Query
 
-from clist import AsyncClistAPI
-from codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
-from codeforces.utils import HKT, hkt_now
-from predicted_deltas import get_predicted_deltas
-from stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
+from tgbot.cf_update.predicted_deltas import get_predicted_deltas
+from tgbot.cf_update.stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
+from tgbot.clist import AsyncClistAPI
+from tgbot.codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
+from tgbot.config import config
+from tgbot.utils import HKT, hkt_now
 
 logging.basicConfig(level="INFO", format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
-
-with open("config.json") as f:
-    config = json.load(f)
 
 routes = web.RouteTableDef()
 lock = asyncio.Lock()
@@ -153,31 +152,34 @@ async def db_retrieve_status(app: web.Application, handle: str) -> list[Submissi
 
 
 async def update_status(app: web.Application, handle: str) -> None:
-    async with lock:
-        old_status, new_status = await asyncio.gather(
-            db_retrieve_status(app, handle),
-            app["cf_client"].get_status(handle, count=100)
-        )
+    try:
+        async with lock:
+            old_status, new_status = await asyncio.gather(
+                db_retrieve_status(app, handle),
+                app["cf_client"].get_status(handle, count=100)
+            )
 
-        status_dict = {s.id: s for s in old_status}
-        updated_status = [s for s in new_status if s.id not in status_dict or status_dict[s.id] != s]
+            status_dict = {s.id: s for s in old_status}
+            updated_status = [s for s in new_status if s.id not in status_dict or status_dict[s.id] != s]
 
-        contest_ids = {s.author.contestId for s in updated_status}
-        # Get all contests simultaneously and cache them
-        await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
+            contest_ids = {s.author.contestId for s in updated_status}
+            # Get all contests simultaneously and cache them
+            await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
 
-        for submission in updated_status:
-            contest = await app["cf_client"].get_contest(submission.author.contestId)
-            if submission.should_notify(contest):
-                await app["bot"].send_message(config["CHAT_ID"], str(submission))
+            for submission in updated_status:
+                contest = await app["cf_client"].get_contest(submission.author.contestId)
+                if submission.should_notify(contest):
+                    await app["bot"].send_message(config["CHAT_ID"], str(submission))
 
-                sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)
-                await app["bot"].send_sticker(config["CHAT_ID"], sticker)
+                    sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)
+                    await app["bot"].send_sticker(config["CHAT_ID"], sticker)
 
-        app["db"].update(
-            {"status": [s.dict() for s in new_status]},
-            Query().handle == handle
-        )
+            app["db"].update(
+                {"status": [s.dict() for s in new_status]},
+                Query().handle == handle
+            )
+    except CodeforcesError as e:
+        logger.warning(f"{type(e).__name__}: {e!s}")
 
 
 async def update_status_forever(app: web.Application) -> None:
@@ -194,28 +196,40 @@ async def update_status_forever(app: web.Application) -> None:
             except asyncio.CancelledError:
                 return
             except Exception as e:
-                logging.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
+                logger.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
 
 
 async def notify_upcoming_contest(app: web.Application) -> None:
     now = hkt_now().replace(second=0, microsecond=0)
     contests = await app["clist_client"].get_upcoming_contests()
 
+    text = ""
+    send_sticker = False
     for contest in contests:
         if now + timedelta(minutes=5) == contest.start_time:
             minutes_left = 5
         elif now + timedelta(minutes=15) == contest.start_time:
             minutes_left = 15
+        elif now + timedelta(minutes=60) == contest.start_time:
+            minutes_left = 60
         else:
             continue
 
-        text = f"{contest.linked_name} begins in {minutes_left} minutes"
+        if minutes_left == 60:
+            text += f"{contest.linked_name} begins in 1 hour\n"
+        else:
+            text += f"{contest.linked_name} begins in {minutes_left} minutes\n"
+            send_sticker = send_sticker or minutes_left == 5
+
+    if text:
         await app["bot"].send_message(config["CHAT_ID"], text)
-        if minutes_left == 5:
-            await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
+    if send_sticker:
+        await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
 
 
 async def startup(app: web.Application) -> None:
+    logger.info("Startup in progress")
+
     context_stack = contextlib.AsyncExitStack()
     app["context_stack"] = context_stack
 
@@ -245,13 +259,25 @@ async def cleanup(app: web.Application) -> None:
     await app["context_stack"].aclose()
 
 
-def main() -> None:
-    app = web.Application()
+async def default_error_handler(request: web.Request) -> web.Response:
+    with error_context(request) as context:
+        if isinstance(context.err, CodeforcesError):
+            logger.warning(context.message)
+        else:
+            logger.error(context.message, exc_info=True)
+        return web.json_response(context.data, status=context.status)
+
+
+async def create_app() -> web.Application:
+    app = web.Application(
+        middlewares=(
+            error_middleware(
+                default_handler=default_error_handler,
+                ignore_exceptions=(HTTPNotFound, HTTPMethodNotAllowed)
+            ),
+        )
+    )
     app.add_routes(routes)
     app.on_startup.append(startup)
     app.on_cleanup.append(cleanup)
-    web.run_app(app, host="0.0.0.0", port=3000, loop=asyncio.get_event_loop())
-
-
-if __name__ == "__main__":
-    main()
+    return app

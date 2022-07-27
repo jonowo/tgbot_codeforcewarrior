@@ -13,10 +13,6 @@ RESOURCES = {
 }
 
 
-class ClistError(Exception):
-    pass
-
-
 def plural(unit: int) -> str:
     return "" if unit == 1 else "s"
 
