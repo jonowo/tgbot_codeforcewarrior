@@ -1,1 +1,1 @@
-from tgbot.functions import cf_verification, decline_join_request
+from tgbot.functions import *

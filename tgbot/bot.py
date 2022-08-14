@@ -179,7 +179,7 @@ class TGMessageDigester:
                         "count": 0
                     })
 
-                    schedule_task("cf_verification", user["id"], datetime.utcnow() + timedelta(seconds=30))
+                    schedule_task("cf_verification", {"user_id": user["id"]}, datetime.utcnow() + timedelta(seconds=30))
 
                     self.text_response = (
                         f"請在十分鐘內到 {problem.linked_name} 提交任何程式作身份驗證\n"
@@ -231,7 +231,7 @@ class TGMessageDigester:
                 self.text_response = "\n\n".join(text)
                 self.disable_web_page_preview = True
             else:
-                self.text_response = "No upcoming contests"
+                self.text_response = "No contests in the next 2 weeks"
         elif cmd == "/delta":
             chat_id = self.data["message"]["chat"]["id"]
             if chat_id == config["CHAT_ID"] or get_handle(user["id"]):
@@ -271,7 +271,7 @@ class TGMessageDigester:
                 ),
                 "parse_mode": "HTML"
             }
-            schedule_task("decline_join_request", user_id, datetime.utcnow() + timedelta(seconds=30 * 60))
+            schedule_task("decline_join_request", {"user_id": user_id}, datetime.utcnow() + timedelta(seconds=30 * 60))
 
     def response_output(self):
         if self.text_response and "message" in self.data:
@@ -288,7 +288,7 @@ class TGMessageDigester:
 @app.route('/', methods=["POST"])
 def hello():
     try:
-        data = flask.request.get_json()
+        data = flask.request.json
         logger.info(data)
         response = TGMessageDigester(data).response_output()
         logger.info(response)

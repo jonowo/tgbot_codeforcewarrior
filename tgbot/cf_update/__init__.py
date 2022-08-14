@@ -18,6 +18,7 @@ from tinydb import Query
 from tgbot.cf_update.predicted_deltas import get_predicted_deltas
 from tgbot.cf_update.stickers import FAILED_STICKERS, OK_STICKERS, UPCOMING_CONTEST_STICKERS
 from tgbot.clist import AsyncClistAPI
+from tgbot.clist.models import ContestInfo
 from tgbot.codeforces import AsyncCodeforcesAPI, CodeforcesError, Contest, ContestPhase, Submission
 from tgbot.config import config
 from tgbot.utils import HKT, hkt_now
@@ -199,32 +200,59 @@ async def update_status_forever(app: web.Application) -> None:
                 logger.error("".join(traceback.format_exception(type(e), e, e.__traceback__)))
 
 
+async def send_poll(app: web.Application, contests: list[ContestInfo]) -> None:
+    message = await app["bot"].send_poll(
+        config["CHAT_ID"],
+        f"Join {' / '.join(c.event for c in contests)}?",
+        options=["Join", "Bey"],
+        is_anonymous=False
+    )
+    await message.pin(disable_notification=True)
+    await app["session"].post(
+        f"{config['FUNCTIONS_URL']}/schedule_unpin_poll",
+        json={"message_id": message.message_id, "time": contests[0].start_time.timestamp()}
+    )
+
+
 async def notify_upcoming_contest(app: web.Application) -> None:
     now = hkt_now().replace(second=0, microsecond=0)
     contests = await app["clist_client"].get_upcoming_contests()
 
     text = ""
     send_sticker = False
+    poll_contests = []
+
     for contest in contests:
-        if now + timedelta(minutes=5) == contest.start_time:
+        if now == contest.start_time:
+            minutes_left = 0
+        elif now + timedelta(minutes=5) == contest.start_time:
             minutes_left = 5
         elif now + timedelta(minutes=15) == contest.start_time:
             minutes_left = 15
         elif now + timedelta(minutes=60) == contest.start_time:
             minutes_left = 60
+            poll_contests.append(contest)
+        elif now == contest.end_time:
+            text += f"{contest.linked_name} has ended.\n"
+            continue
         else:
             continue
 
-        if minutes_left == 60:
+        if minutes_left == 0:
+            text += f"{contest.linked_name} has just begun.\n"
+        elif minutes_left == 60:
             text += f"{contest.linked_name} begins in 1 hour\n"
         else:
             text += f"{contest.linked_name} begins in {minutes_left} minutes\n"
-            send_sticker = send_sticker or minutes_left == 5
+            if minutes_left == 5:
+                send_sticker = True
 
     if text:
         await app["bot"].send_message(config["CHAT_ID"], text)
     if send_sticker:
         await app["bot"].send_sticker(config["CHAT_ID"], random.choice(UPCOMING_CONTEST_STICKERS))
+    if poll_contests:
+        await send_poll(app, poll_contests)
 
 
 async def startup(app: web.Application) -> None:
@@ -239,7 +267,7 @@ async def startup(app: web.Application) -> None:
     )
 
     # aiohttp session
-    app["session"] = await context_stack.enter_async_context(ClientSession())
+    app["session"] = await context_stack.enter_async_context(ClientSession(raise_for_status=True))
 
     app["db"] = await context_stack.enter_async_context(AIOTinyDB("db.json"))
 

@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime
 from typing import Any, Optional
 
@@ -19,6 +20,7 @@ try:
 except ImportError:
     pass
 
+logger = logging.getLogger(__name__)
 session = requests.Session()
 
 resp = session.get(
@@ -36,16 +38,16 @@ task_parent = task_client.queue_path(PROJECT_ID, "asia-northeast1", "cfbot-verif
 
 
 def make_tg_api_request(endpoint, params: dict[str, Any]) -> requests.Response:
-    return session.get(
+    resp = session.get(
         f"https://api.telegram.org/bot{config['TOKEN']}/{endpoint}",
         params=params,
         timeout=5
     )
+    logger.info(f"TG API request: {resp.status_code}")
+    return resp
 
 
-def schedule_task(endpoint: str, user_id: int, dt: datetime) -> None:
-    data = {"user_id": user_id}
-
+def schedule_task(endpoint: str, data: dict[str, Any], dt: datetime) -> None:
     timestamp = timestamp_pb2.Timestamp()
     timestamp.FromDatetime(dt)
 
