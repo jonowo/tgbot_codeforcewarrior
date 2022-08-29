@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 
 import functions_framework
@@ -9,6 +10,7 @@ from tgbot.config import config
 from tgbot.gcp_common import db, get_handles, make_tg_api_request, schedule_task
 from tgbot.utils import hkt_now
 
+logger = logging.getLogger(__name__)
 cf_client = CodeforcesAPI()
 
 
@@ -23,7 +25,7 @@ def verify(handle: str, problem_id: str) -> bool:
 
 @functions_framework.http
 def cf_verification(request: Request) -> str:
-    user_id = request.get_json()["user_id"]
+    user_id = request.json["user_id"]
 
     doc_ref = db.collection("cfbot_verification").document(str(user_id))
     doc = doc_ref.get()
@@ -72,7 +74,7 @@ def cf_verification(request: Request) -> str:
         return "verification successful"
 
     if count < 19:
-        schedule_task("cf_verification", user_id, datetime.utcnow() + timedelta(seconds=30))
+        schedule_task("cf_verification", {"user_id": user_id}, datetime.utcnow() + timedelta(seconds=30))
         doc_ref.update({"count": count + 1})
         return "pending verification"
 
@@ -92,7 +94,7 @@ def cf_verification(request: Request) -> str:
 
 @functions_framework.http
 def decline_join_request(request: Request) -> str:
-    user_id = request.get_json()["user_id"]
+    user_id = request.json["user_id"]
 
     # Will fail (with no effect) if the user never requested to join / is already inside group
     make_tg_api_request(
@@ -100,6 +102,30 @@ def decline_join_request(request: Request) -> str:
         params={
             "chat_id": config["CHAT_ID"],
             "user_id": user_id
+        }
+    )
+
+    return ""
+
+
+@functions_framework.http
+def schedule_unpin_poll(request: Request) -> str:
+    data = request.json
+    dt = datetime.utcfromtimestamp(data["time"])
+    logger.warning(f"Scheduling to unpin poll {data['message_id']} at {dt}")
+    schedule_task("unpin_poll", {"message_id": data["message_id"]}, dt)
+
+    return ""
+
+
+@functions_framework.http
+def unpin_poll(request: Request) -> str:
+    logger.warning(f"Now unpinning poll {request.json['message_id']}")
+    make_tg_api_request(
+        "unpinChatMessage",
+        params={
+            "chat_id": config["CHAT_ID"],
+            "message_id": request.json["message_id"]
         }
     )
 
