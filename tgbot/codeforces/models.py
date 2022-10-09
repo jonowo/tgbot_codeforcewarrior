@@ -191,11 +191,11 @@ class Submission(BaseModel):
         text = self.get_author().linked_name + " "
         if self.verdict == "OK":
             testset = "pretests" if self.testset == "PRETESTS" else "main tests"
-            text += f"passed all {self.passedTestCount} {testset} on {self.problem.linked_name} using {self.programmingLanguage}"
+            text += f"passed all {self.passedTestCount} {testset} for {self.problem.linked_name} using {self.programmingLanguage}"
         elif self.verdict == "CHALLENGED":
             text += f"was hacked on {self.problem.linked_name}"
         else:
-            text += f"received {capwords(self.verdict.replace('_', ' '))} on {self.problem.linked_name}"
+            text += f"received {capwords(self.verdict.replace('_', ' '))} on test {self.passedTestCount + 1} for {self.problem.linked_name}"
 
         return text
 
