@@ -194,6 +194,8 @@ class Submission(BaseModel):
             text += f"passed all {self.passedTestCount} {testset} for {self.problem.linked_name} using {self.programmingLanguage}"
         elif self.verdict == "CHALLENGED":
             text += f"was hacked on {self.problem.linked_name}"
+        elif self.verdict == "COMPILATION_ERROR":
+            text += f"received Compilation Error for {self.problem.linked_name}"
         else:
             text += f"received {capwords(self.verdict.replace('_', ' '))} on test {self.passedTestCount + 1} for {self.problem.linked_name}"
 
