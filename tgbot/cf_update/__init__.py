@@ -155,7 +155,8 @@ async def db_retrieve_status(app: web.Application, handle: str) -> list[Submissi
 async def update_status(app: web.Application, handle: str) -> None:
     try:
         async with lock:
-            old_status, new_status = await asyncio.gather(
+            user, old_status, new_status = await asyncio.gather(
+                app["cf_client"].get_user(handle),
                 db_retrieve_status(app, handle),
                 app["cf_client"].get_status(handle, count=100)
             )
@@ -169,7 +170,7 @@ async def update_status(app: web.Application, handle: str) -> None:
 
             for submission in updated_status:
                 contest = await app["cf_client"].get_contest(submission.author.contestId)
-                if submission.should_notify(contest):
+                if submission.should_notify(user, contest):
                     await app["bot"].send_message(config["CHAT_ID"], str(submission))
 
                     sticker = random.choice(OK_STICKERS if submission.verdict == "OK" else FAILED_STICKERS)

@@ -176,12 +176,12 @@ class Submission(BaseModel):
                 and self.verdict not in ("OK", "TESTING", "CHALLENGED", "SKIPPED", "PARTIAL")
         )
 
-    def should_notify(self, contest) -> bool:
+    def should_notify(self, user: User, contest: Contest) -> bool:
         """Determine if the submission should be announced in group."""
         if self.verdict == "TESTING":
             return False
 
-        if self.verdict in ("OK", "CHALLENGED"):
+        if self.verdict in ("OK", "CHALLENGED") or user.rating >= 1400:
             return True
 
         return self.is_fst(contest)
@@ -190,14 +190,14 @@ class Submission(BaseModel):
         """Group notification for submission update."""
         text = self.get_author().linked_name + " "
         if self.verdict == "OK":
-            if self.testset == "PRETESTS":
-                text += f"passed all {self.passedTestCount} pretests on {self.problem.linked_name}"
-            else:
-                text += f"passed all {self.passedTestCount} main tests on {self.problem.linked_name}"
+            testset = "pretests" if self.testset == "PRETESTS" else "main tests"
+            text += f"passed all {self.passedTestCount} {testset} for {self.problem.linked_name} using {self.programmingLanguage}"
         elif self.verdict == "CHALLENGED":
             text += f"was hacked on {self.problem.linked_name}"
+        elif self.verdict == "COMPILATION_ERROR":
+            text += f"received Compilation Error for {self.problem.linked_name}"
         else:
-            text += f"FSTed on {self.problem.linked_name}"
+            text += f"received {capwords(self.verdict.replace('_', ' '))} on test {self.passedTestCount + 1} for {self.problem.linked_name}"
 
         return text
 
