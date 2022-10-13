@@ -181,7 +181,7 @@ class Submission(BaseModel):
         if self.verdict == "TESTING":
             return False
 
-        if self.verdict in ("OK", "CHALLENGED") or user.rating >= 1400:
+        if self.verdict in ("OK", "CHALLENGED") or (user.rating and user.rating >= 1400):
             return True
 
         return self.is_fst(contest)
