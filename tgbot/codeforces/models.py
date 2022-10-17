@@ -178,7 +178,7 @@ class Submission(BaseModel):
 
     def should_notify(self, user: User, contest: Contest) -> bool:
         """Determine if the submission should be announced in group."""
-        if self.verdict == "TESTING":
+        if self.verdict is None or self.verdict == "TESTING":
             return False
 
         if self.verdict in ("OK", "CHALLENGED") or (user.rating and user.rating >= 1400):
