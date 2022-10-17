@@ -168,7 +168,7 @@ async def update_status(app: web.Application, handle: str) -> None:
             # Get all contests simultaneously and cache them
             await asyncio.gather(*(app["cf_client"].get_contest(cid) for cid in contest_ids))
 
-            for submission in updated_status:
+            for submission in updated_status[::-1]:  # Chronological order
                 contest = await app["cf_client"].get_contest(submission.author.contestId)
                 if submission.should_notify(user, contest):
                     await app["bot"].send_message(config["CHAT_ID"], str(submission))
@@ -192,8 +192,8 @@ async def update_status_forever(app: web.Application) -> None:
 
         for handle in handles:
             try:
-                # At least 3s between each update
-                await asyncio.gather(update_status(app, handle), asyncio.sleep(2.8))
+                # At least 2s between each update
+                await asyncio.gather(update_status(app, handle), asyncio.sleep(1.8))
                 await asyncio.sleep(0.2)
             except asyncio.CancelledError:
                 return
