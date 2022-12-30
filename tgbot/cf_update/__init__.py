@@ -119,7 +119,14 @@ async def send_delta(app: web.Application, chat_id: int) -> None:
         handles = get_handles(app)
 
     # Get the most recent contest(s)
-    contests = await app["cf_client"].get_contests(phases=())
+    try:
+        contests = await app["cf_client"].get_contests(phases=())
+    except CodeforcesError as e:
+        asyncio.create_task(
+            app["bot"].send_message(chat_id, str(e))
+        )
+        return
+
     contests = [c for c in contests if c.phase != ContestPhase.BEFORE]
     contests.sort(key=lambda c: (c.startTimeSeconds, c.id))
     contests = [c for c in contests if c.startTimeSeconds == contests[-1].startTimeSeconds]
