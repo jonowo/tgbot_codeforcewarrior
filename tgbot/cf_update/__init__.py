@@ -6,7 +6,7 @@ import traceback
 from datetime import timedelta
 
 import aiocron
-from aiohttp import ClientSession, web
+from aiohttp import ClientSession, web, ClientResponseError
 from aiohttp.web_exceptions import HTTPMethodNotAllowed, HTTPNotFound
 from aiohttp_middlewares import error_context, error_middleware
 from aiotinydb import AIOTinyDB
@@ -94,8 +94,11 @@ async def get_delta_table(app: web.Application, contest: Contest, handles: list[
             predict = False
 
     if predict:
-        async with delta_lock:
-            rating_changes = await get_predicted_deltas(app, contest.id)
+        try:
+            async with delta_lock:
+                rating_changes = await get_predicted_deltas(app, contest.id)
+        except ClientResponseError as e:
+            return f"{e.status} {e.message}"
         rows = [rating_changes[h] for h in handles if h in rating_changes]
     else:
         rows = [rating_changes[h].get_table_row() for h in handles if h in rating_changes]
